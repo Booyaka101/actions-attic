@@ -10,3 +10,6 @@ tmp/
 scratch/
 *.tgz
 .DS_Store
+
+# Outreach drafts are working notes, not part of the package.
+docs/*-draft.md
