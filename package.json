@@ -1,0 +1,61 @@
+{
+  "name": "actions-attic",
+  "version": "1.0.0",
+  "description": "Keep a permanent archive of a repository's GitHub Actions runs, checks and statuses before GitHub's 2026-10-01 retention change deletes them.",
+  "keywords": [
+    "github-actions",
+    "actions",
+    "archive",
+    "retention",
+    "workflow-runs",
+    "check-runs",
+    "commit-statuses",
+    "backfill",
+    "ci",
+    "flaky-tests"
+  ],
+  "homepage": "https://github.com/Booyaka101/actions-attic#readme",
+  "bugs": {
+    "url": "https://github.com/Booyaka101/actions-attic/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Booyaka101/actions-attic.git"
+  },
+  "license": "MIT",
+  "author": "Booyaka101",
+  "type": "module",
+  "bin": {
+    "actions-attic": "bin/actions-attic.mjs"
+  },
+  "exports": {
+    ".": "./lib/exports.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "dist",
+    "action.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && npm run bundle",
+    "bundle": "esbuild src/action.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.cjs --legal-comments=none",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:only": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  }
+}

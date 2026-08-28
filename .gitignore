@@ -1,0 +1,12 @@
+node_modules/
+lib/
+*.tsbuildinfo
+*.db
+*.db-journal
+*.db-wal
+attic/
+attic-*/
+tmp/
+scratch/
+*.tgz
+.DS_Store

@@ -1,0 +1,68 @@
+name: 'actions-attic'
+description: 'Archive workflow runs, checks and statuses into your repo before GitHub deletes them from 2026-10-01.'
+author: 'Booyaka101'
+branding:
+  icon: 'archive'
+  color: 'orange'
+
+inputs:
+  token:
+    description: 'Token used to read Actions data and write the archive branch.'
+    required: false
+    default: ${{ github.token }}
+  branch:
+    description: 'Orphan branch that holds the archive.'
+    required: false
+    default: 'actions-attic'
+  mode:
+    description: 'auto (top up then continue the backfill), backfill, or incremental.'
+    required: false
+    default: 'auto'
+  backfill-months:
+    description: 'How many months of history to walk backwards.'
+    required: false
+    default: '14'
+  max-requests:
+    description: 'API request ceiling for one run. GITHUB_TOKEN allows 1000/hour/repo.'
+    required: false
+    default: '800'
+  max-pages:
+    description: 'Page ceiling for an incremental catch-up.'
+    required: false
+    default: '50'
+  repository:
+    description: 'Repository to archive, owner/name. Defaults to the current repository.'
+    required: false
+    default: ''
+  skip-checks:
+    description: 'Skip check runs.'
+    required: false
+    default: 'false'
+  skip-statuses:
+    description: 'Skip commit statuses.'
+    required: false
+    default: 'false'
+
+outputs:
+  runs-added:
+    description: 'Workflow run attempts added this run.'
+  checks-added:
+    description: 'Check runs added this run.'
+  statuses-added:
+    description: 'Commit statuses added this run.'
+  committed:
+    description: 'true when a commit was made.'
+  commit-sha:
+    description: 'SHA of the archive commit, empty when nothing changed.'
+  backfill-frontier:
+    description: 'First day of the oldest month archived so far, empty once the backfill is complete.'
+  backfill-complete:
+    description: 'true once the backfill has reached backfill-months.'
+  requests-used:
+    description: 'API requests spent this run.'
+  branch:
+    description: 'Archive branch that was written.'
+
+runs:
+  using: 'node24'
+  main: 'dist/index.cjs'
