@@ -131,6 +131,28 @@ nothing needs re-ticking.
 Sudo then lasts about three hours. Later releases need no UI step at all: once an Action is listed,
 `gh release create` alone publishes the new version.
 
+## Distribution, 2026-08-28
+
+| Channel | State |
+| --- | --- |
+| GitHub Marketplace | Live, `actions-attic@v1`, Continuous integration + Backup Utilities |
+| npm | `actions-attic@1.1.0` |
+| r/booyakatools, Discord `#tool-releases` | Both releases posted by the owner's automation |
+| Hacker News | https://news.ycombinator.com/item?id=49477735, the changelog as the story, tool disclosed in the first comment |
+| dev.to | https://dev.to/booyaka101/github-starts-deleting-your-actions-run-history-on-october-1-there-is-no-export-button-3ck1 |
+| community discussion 138249 | Drafted, owner decided not to post |
+
+The dev.to piece is a search asset rather than an audience play. Measured first: 20 prior articles
+on that account total 16 reactions and 9 comments, and three of them are the same deadline-plus-tool
+shape as this one, so the expected engagement there is about one reaction. It was published for the
+Google surface on queries people will type in October, and it is indexable with no robots
+restriction.
+
+**The launch is five weeks early.** The changelog does not bite until 1 October, so nobody is
+searching for this yet. The high-value move is a second run at the story in late September, when
+"GitHub starts deleting Actions history on Monday" is imminent rather than hypothetical. HN permits
+resubmitting a URL that got no traction, and r/devops becomes worth the rules-reading then too.
+
 ## Not done, deliberately
 
 - Out of scope for v1 per the brief: org-wide rollup, log text download, artifacts, web dashboard, Prometheus, hosted service.
