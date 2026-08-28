@@ -1,6 +1,6 @@
 # actions-attic build state
 
-**Status: v1.0.0 complete, and reviewed.** Feature-complete, tested, packaged, verified end to end against live GitHub. Not published (owner ships that step).
+**Status: v1.0.0 shipped.** Published to npm and released on GitHub, 2026-08-28. The Marketplace listing form is filled and submitted; it needs one 6-digit code from the owner's authenticator app to land.
 
 Built and reviewed 2026-08-28.
 
@@ -83,15 +83,41 @@ and a `stats` table that flags any disagreement between the manifest and the fil
 Docs assets in `docs/` are rendered by `scripts/screenshots.mjs` from the verbatim captures in
 `docs/sessions/`; every line in them is real output from a live run.
 
+## Shipped
+
+| Where | State |
+| --- | --- |
+| GitHub | https://github.com/Booyaka101/actions-attic, public, 8 topics |
+| Release | v1.0.0 at `82da50f`, plus a moving `v1` tag |
+| CI on the release commit | 6/6 green: 4 test legs (ubuntu + windows, node 22 + 24), `dist-is-current`, `pack` |
+| npm | `actions-attic@1.0.0`, MIT, 32 files, 983 kB unpacked. Verified by installing from the registry into an empty directory and archiving a live repository. |
+| Marketplace | Form submitted with Continuous integration + Backup Utilities. Blocked on sudo. |
+
+**No provenance attestation on 1.0.0.** It was published from an authenticated local npm session,
+and provenance needs an OIDC publish from a GitHub runner, which needs a token minted behind 2FA.
+npm forbids republishing a version, so 1.0.0 cannot gain one later. To get provenance from 1.0.1
+onward, set up npm Trusted Publishing for the package and publish from CI.
+
+## Finishing the Marketplace listing
+
+The release edit form has already been submitted with the Marketplace box ticked and both categories
+set. GitHub is holding that POST behind sudo and replays it automatically once sudo clears, so
+nothing needs re-ticking.
+
+1. In the open Chrome tab on `github.com/Booyaka101/actions-attic/releases/tag/v1.0.0`, the
+   "Confirm access" page is showing the authenticator field (`#app_totp`, placeholder XXXXXX).
+2. Type the 6-digit code from the authenticator app and click Verify. Ignore "Send a code via
+   email"; measured delivery here has run 45 to 90 minutes, past the code's own validity.
+3. `https://github.com/marketplace/actions/actions-attic` goes from 404 to 200 within a few minutes.
+
+Sudo then lasts about three hours. Later releases need no UI step at all: once an Action is listed,
+`gh release create` alone publishes the new version.
+
 ## Not done, deliberately
 
-- **Publishing.** Not pushed to GitHub, not on the Marketplace, not on npm. That is the owner's step.
 - Out of scope for v1 per the brief: org-wide rollup, log text download, artifacts, web dashboard, Prometheus, hosted service.
 
-## Owner's next steps to ship
+## First distribution step
 
-1. `gh repo create Booyaka101/actions-attic --public --source=. --push` (the local repo is committed on `main`).
-2. Wait for CI green on that commit, then `gh release create v1.0.0` and a moving `v1` tag.
-3. Marketplace listing (first listing needs sudo/TOTP in the browser; `action.yml` description is 101 chars, under the 125 limit; primary category "Continuous integration" = id 2).
-4. `npm publish` (needs the owner's npm session; decide on provenance before the first publish, since a version cannot be republished).
-5. First distribution step: a comment in [community discussion #138249](https://github.com/orgs/community/discussions/138249), the thread where people have asked GitHub for exactly this since 2024.
+A comment in [community discussion #138249](https://github.com/orgs/community/discussions/138249),
+the thread where people have asked GitHub for exactly this since 2024, still labelled "In Backlog".
