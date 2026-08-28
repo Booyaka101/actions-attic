@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerates test/fixtures/archive — a deterministic stand-in archive used by
+// Regenerates test/fixtures/archive, a deterministic stand-in archive used by
 // the flake, SQLite-index and CLI tests. Test-only; nothing here ships.
 //
 //   node test/fixtures/generate.mjs

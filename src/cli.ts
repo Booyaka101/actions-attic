@@ -14,7 +14,9 @@ import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 const require = createRequire(import.meta.url);
 const pkg = require('../package.json') as { version: string; name: string };
 
-const HELP = `actions-attic ${pkg.version} — keep a permanent archive of a repository's GitHub Actions history.
+const HELP = `actions-attic ${pkg.version}
+
+Keep a permanent archive of a repository's GitHub Actions history.
 
   GitHub starts applying the Actions retention setting to checks, workflow runs and
   statuses on 2026-10-01. Public repositories cap out at 90 days. Archive first.

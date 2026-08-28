@@ -4,7 +4,7 @@
 > Until now they "were retained for 400+ days regardless of your retention configuration". "For public repositories, the maximum retention for checks, workflow runs, and statuses is 90 days."
 > "Export or archive anything you need to keep beyond your configured retention period, since older checks, workflow runs, and statuses will be automatically removed."
 >
-> — [GitHub Changelog, 27 August 2026](https://github.blog/changelog/2026-08-27-actions-retention-will-cover-checks-workflow-runs-and-statuses/)
+> [GitHub Changelog, 27 August 2026](https://github.blog/changelog/2026-08-27-actions-retention-will-cover-checks-workflow-runs-and-statuses/)
 
 GitHub tells you to export. It does not ship an exporter. This is one.
 
@@ -89,8 +89,8 @@ $ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests
 2026-07-01..2026-07-15 hits the 1000-result cap; splitting
 stopping inside 2026-07; the next run resumes at the windows still outstanding
 max-requests ceiling reached after 30 requests; saving progress now
-attic: backfill 2026-08 (2,435 runs)
-wrote 3 files to ./attic (2,435 runs, 0 checks, 0 statuses new)
+attic: backfill 2026-08 (2,437 runs)
+wrote 3 files to ./attic (2,437 runs, 0 checks, 0 statuses new)
 30 API requests used
 backfill frontier at 2026-08-01; run again to continue
 checkpointed: reached the max-requests ceiling of 30
@@ -144,7 +144,7 @@ $ npx actions-attic stats --archive ./attic
   statuses         0
   highest run id   32730596571
   backfill         complete
-  last change      2026-08-28T02:05:56.958Z
+  last change      2026-08-28T02:29:46.197Z
   schema           v1
 
 $ npx actions-attic build --archive ./attic
@@ -201,13 +201,13 @@ Outputs: `runs-added`, `checks-added`, `statuses-added`, `committed`, `commit-sh
 
 ## How it stays inside the rate limit
 
-`GET /actions/runs` returns at most 1,000 results per search when filtered by `created`, so the backfill windows by month and halves any window that reports 1,000 or more — recursively, down to a single day. Every response's `x-ratelimit-remaining` and `x-ratelimit-reset` are read, and the walk stops cleanly at `max-requests` or when the live limit gets close.
+`GET /actions/runs` returns at most 1,000 results per search when filtered by `created`, so the backfill windows by month and halves any window that reports 1,000 or more, recursively, down to a single day. Every response's `x-ratelimit-remaining` and `x-ratelimit-reset` are read, and the walk stops cleanly at `max-requests` or when the live limit gets close.
 
 Progress is checkpointed at three levels, so no work is ever repeated and none is lost:
 
-- **month** — `backfillFrontier` is the first day of the oldest month fully captured
-- **window** — a half-finished month records which date windows are done, and which are known to need splitting
-- **page** — a window interrupted mid-pagination resumes at the next page
+- **month.** `backfillFrontier` is the first day of the oldest month fully captured
+- **window.** A half-finished month records which date windows are done, and which are known to need splitting
+- **page.** A window interrupted mid-pagination resumes at the next page
 
 A secondary rate limit with a long `retry-after` checkpoints and exits 0 rather than failing the job. A short one is waited out.
 
@@ -235,7 +235,7 @@ The JSONL is plain text, so `grep`, `jq` and `git log` work on it directly. That
 - **Single repository per archive.** No org-wide rollup.
 - **No log text.** Job logs are a much larger retention problem and are out of scope; this archives the run, check and status metadata.
 - **No artifacts.**
-- A single day with 1,000 or more runs cannot be fully enumerated — GitHub will not serve past that cap for one search. actions-attic warns and takes the 1,000 it can get.
+- A single day with 1,000 or more runs cannot be fully enumerated. GitHub will not serve past that cap for one search. actions-attic warns and takes the 1,000 it can get.
 - Statuses need pull access. If the token cannot read them the run warns once and carries on with runs and checks.
 - The backfill only reaches as far back as GitHub still has data. Run it **before** 1 October 2026 and you keep what would otherwise be deleted; run it after and you get whatever survived your retention setting.
 - Data added to the archive is never removed by this tool. Deleting the branch deletes the archive.
@@ -264,7 +264,7 @@ top of each file.
 
 ## First distribution step
 
-Post in [community discussion #138249](https://github.com/orgs/community/discussions/138249) — the two-year-old thread where people have been asking GitHub for exactly this, still labelled "In Backlog". That is where the audience already is, and the October 1 date makes it timely.
+Post in [community discussion #138249](https://github.com/orgs/community/discussions/138249), the two-year-old thread where people have been asking GitHub for exactly this, still labelled "In Backlog". That is where the audience already is, and the October 1 date makes it timely.
 
 ## License
 

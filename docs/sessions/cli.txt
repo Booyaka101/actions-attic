@@ -1,4 +1,4 @@
-# actions-attic — archive, index and read
+# actions-attic: archive, index and read
 $ npx actions-attic sync Booyaka101/rimpatch --archive ./attic --months 14
 2026-08: fetching checks/statuses for 7 new commits
 attic: backfill 2025-07..2026-08 (14 runs)
@@ -21,7 +21,7 @@ $ npx actions-attic stats --archive ./attic
   statuses         0
   highest run id   32730596571
   backfill         complete
-  last change      2026-08-28T02:05:56.958Z
+  last change      2026-08-28T02:29:46.197Z
   schema           v1
 
 $ npx actions-attic build --archive ./attic

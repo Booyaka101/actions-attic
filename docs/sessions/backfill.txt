@@ -1,4 +1,4 @@
-# actions-attic — backfilling cli/cli across three budget-limited runs
+# actions-attic: backfilling cli/cli across three budget-limited runs
 $ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
 2026-08-01..2026-08-31 hits the 1000-result cap; splitting
 2026-08-01..2026-08-15 hits the 1000-result cap; splitting
@@ -17,8 +17,8 @@ $ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests
 2026-07-01..2026-07-15 hits the 1000-result cap; splitting
 stopping inside 2026-07; the next run resumes at the windows still outstanding
 max-requests ceiling reached after 30 requests; saving progress now
-attic: backfill 2026-08 (2,435 runs)
-wrote 3 files to ./attic (2,435 runs, 0 checks, 0 statuses new)
+attic: backfill 2026-08 (2,437 runs)
+wrote 3 files to ./attic (2,437 runs, 0 checks, 0 statuses new)
 30 API requests used
 backfill frontier at 2026-08-01; run again to continue
 checkpointed: reached the max-requests ceiling of 30

@@ -1,11 +1,11 @@
-# actions-attic — the Action's first run, then a quiet one
-$ # night 1 — creates the orphan branch and backfills 14 months
+# actions-attic: the Action's first run, then a quiet one
+$ # night 1 creates the orphan branch and backfills 14 months
 actions-attic: Booyaka101/rimpatch -> Booyaka101/rimpatch@actions-attic (mode auto, budget 800 requests)
 branch actions-attic does not exist yet; this run will create it
 2026-08: fetching checks/statuses for 7 new commits
-committed dd1a79c41cc742dff1ffcb2f965ca67d83ec8c66 — attic: backfill 2025-07..2026-08 (14 runs)
+committed 212690c9682323ac4b94a92f0a8f829ad4062a6d: attic: backfill 2025-07..2026-08 (14 runs)
 
-$ # night 2 — nothing new, so no commit
+$ # night 2 finds nothing new, so makes no commit
 actions-attic: Booyaka101/rimpatch -> Booyaka101/rimpatch@actions-attic (mode auto, budget 800 requests)
 incremental: scanning for new runs
 nothing new to archive; no commit made

@@ -99,7 +99,7 @@ export async function run(): Promise<void> {
   core.setOutput('branch', branch);
   core.setOutput('source-repository', `${owner}/${repo}`);
 
-  if (summary.commit) core.info(`committed ${summary.commit.sha ?? ''} — ${summary.message}`);
+  if (summary.commit) core.info(`committed ${summary.commit.sha ?? ''}: ${summary.message}`);
   else core.info('nothing new to archive; no commit made');
 
   if (summary.checkpoint) {
@@ -113,10 +113,10 @@ export async function run(): Promise<void> {
   const n = (value: number) => value.toLocaleString('en-US');
   const state = summary.archive.manifest.backfillComplete
     ? 'Backfill complete.'
-    : `Backfill in progress${summary.frontier ? `, frontier \`${summary.frontier}\`` : ''} — the next run continues from here.`;
+    : `Backfill in progress${summary.frontier ? `, frontier \`${summary.frontier}\`` : ''}. The next run continues from here.`;
 
   await core.summary
-    .addHeading(`actions-attic — ${owner}/${repo}`, 3)
+    .addHeading(`actions-attic: ${owner}/${repo}`, 3)
     .addRaw(
       summary.commit
         ? `Committed \`${summary.message}\` to \`${branch}\`.`

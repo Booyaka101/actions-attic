@@ -20614,7 +20614,7 @@ async function run() {
   setOutput("requests-used", summary2.requests);
   setOutput("branch", branch);
   setOutput("source-repository", `${owner}/${repo}`);
-  if (summary2.commit) info(`committed ${summary2.commit.sha ?? ""} \u2014 ${summary2.message}`);
+  if (summary2.commit) info(`committed ${summary2.commit.sha ?? ""}: ${summary2.message}`);
   else info("nothing new to archive; no commit made");
   if (summary2.checkpoint) {
     notice(
@@ -20623,8 +20623,8 @@ async function run() {
   }
   const totals = summary2.archive.manifest.counts;
   const n2 = (value) => value.toLocaleString("en-US");
-  const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""} \u2014 the next run continues from here.`;
-  await summary.addHeading(`actions-attic \u2014 ${owner}/${repo}`, 3).addRaw(
+  const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""}. The next run continues from here.`;
+  await summary.addHeading(`actions-attic: ${owner}/${repo}`, 3).addRaw(
     summary2.commit ? `Committed \`${summary2.message}\` to \`${branch}\`.` : `Nothing new on \`${branch}\`; no commit made.`,
     true
   ).addBreak().addTable([

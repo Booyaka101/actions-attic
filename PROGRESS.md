@@ -1,4 +1,4 @@
-# actions-attic — build state
+# actions-attic build state
 
 **Status: v1.0.0 complete, and reviewed.** Feature-complete, tested, packaged, verified end to end against live GitHub. Not published (owner ships that step).
 
@@ -35,7 +35,7 @@ Built and reviewed 2026-08-28.
 ## Bugs found by real data and fixed
 
 1. An interrupted first month left `backfillFrontier: null`, which `auto` mode read as "backfill complete". Added `backfillComplete` and `backfillOldestMonth`.
-2. A month bigger than one request budget restarted from scratch every invocation and never advanced — a livelock, reproduced live on `cli/cli`. Added sub-month window checkpointing (`backfillPartial`).
+2. A month bigger than one request budget restarted from scratch every invocation and never advanced, a livelock, reproduced live on `cli/cli`. Added sub-month window checkpointing (`backfillPartial`).
 3. Pages already fetched were discarded when the budget aborted a window mid-pagination. Now kept via `try/finally`.
 4. A leaf window needing more pages than the whole budget could never complete. Added page-level resume (`startPage` / `onPage`).
 
@@ -47,7 +47,7 @@ All four have regression tests.
 A full read-through plus an isolated test environment and adversarial edge-case probing found six
 more defects. All are fixed and all have regression tests; the suite went from 60 to 81 tests.
 
-1. **The Action committed nothing whenever it spent its budget — critical.** The commit itself needs
+1. **The Action committed nothing whenever it spent its budget. Critical.** The commit itself needs
    API requests, and the walk stopped exactly at the `max-requests` ceiling, so `finalize()` threw
    before writing. Every night's work was discarded and the backfill could never converge on any
    repository big enough to hit the ceiling, which is precisely what the tool is for. Invisible to
@@ -57,11 +57,11 @@ more defects. All are fixed and all have regression tests; the suite went from 6
    matching `total_count` exactly. Before the fix that scenario committed zero.
 2. **Window checkpoints could run ahead of the data.** A window was recorded as captured when its
    pages were *fetched*, not when they were *stored*. An interruption in between marked the window
-   done and lost those runs for good — measured at 150 runs silently missing while the month was
+   done and lost those runs for good, measured at 150 runs silently missing while the month was
    reported complete. Runs are now written window by window, and every checkpoint strictly follows a
    successful write.
 3. **Queued check runs were silently dropped.** A check run that has not started has neither
-   `started_at` nor `completed_at`, so it had no month to be filed under and was discarded — and its
+   `started_at` nor `completed_at`, so it had no month to be filed under and was discarded, and its
    commit was then marked fetched, so it was never revisited. `add()` now takes the month of the run
    that referenced it.
 4. **A commit re-read the whole archive.** Recounting on every `finalize()` cost one API request per
@@ -92,6 +92,6 @@ Docs assets in `docs/` are rendered by `scripts/screenshots.mjs` from the verbat
 
 1. `gh repo create Booyaka101/actions-attic --public --source=. --push` (the local repo is committed on `main`).
 2. Wait for CI green on that commit, then `gh release create v1.0.0` and a moving `v1` tag.
-3. Marketplace listing (first listing needs sudo/TOTP in the browser — `action.yml` description is 101 chars, under the 125 limit; primary category "Continuous integration" = id 2).
+3. Marketplace listing (first listing needs sudo/TOTP in the browser; `action.yml` description is 101 chars, under the 125 limit; primary category "Continuous integration" = id 2).
 4. `npm publish` (needs the owner's npm session; decide on provenance before the first publish, since a version cannot be republished).
 5. First distribution step: a comment in [community discussion #138249](https://github.com/orgs/community/discussions/138249), the thread where people have asked GitHub for exactly this since 2024.
