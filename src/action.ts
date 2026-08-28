@@ -2,7 +2,7 @@
 
 import * as core from '@actions/core';
 import { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
-import { BranchBackend } from './backend.js';
+import { RefBackend, normalizeRef } from './backend.js';
 import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 
 function input(name: string, fallback: string): string {
@@ -27,6 +27,9 @@ function boolInput(name: string): boolean {
   throw new Error(`input "${name}" must be true or false, got "${raw}"`);
 }
 
+/** Outside refs/heads/, so the archive is not a branch anyone has to look after. */
+const DEFAULT_REF = 'refs/attic/archive';
+
 export async function run(): Promise<void> {
   const token = input('token', process.env.GITHUB_TOKEN ?? '');
   if (!token) {
@@ -40,23 +43,30 @@ export async function run(): Promise<void> {
     return;
   }
 
-  // The archive branch always lives in the repository running the workflow,
-  // which is the only one github.token can write to. `repository` only chooses
-  // whose Actions history to read.
+  // The archive always lives in the repository running the workflow, which is
+  // the only one github.token can write to. `repository` only chooses whose
+  // Actions history to read.
   const host = process.env.GITHUB_REPOSITORY ?? '';
   if (!host) {
-    core.setFailed('GITHUB_REPOSITORY is not set, so there is nowhere to write the archive branch.');
+    core.setFailed('GITHUB_REPOSITORY is not set, so there is nowhere to write the archive.');
     return;
   }
   const { owner: hostOwner, repo: hostRepo } = parseRepo(host);
   const { owner, repo } = parseRepo(input('repository', host));
-  const branch = input('branch', 'actions-attic');
+
+  // `branch` predates 1.1.0. Honouring it means upgrading never silently moves
+  // an existing archive to the new default ref.
+  const explicitRef = core.getInput('ref').trim();
+  const legacyBranch = core.getInput('branch').trim();
+  if (explicitRef && legacyBranch) core.warning('both `ref` and `branch` are set; using `ref`.');
+  const ref = normalizeRef(explicitRef || legacyBranch || DEFAULT_REF);
   const months = intInput('backfill-months', 14, 1, 120);
   const maxRequests = intInput('max-requests', 800, 1, 1_000_000);
   const maxPages = intInput('max-pages', 50, 1, 1000);
   const skipChecks = boolInput('skip-checks');
   const skipStatuses = boolInput('skip-statuses');
 
+  const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
   const api = new Api({
     token,
     maxRequests,
@@ -65,14 +75,16 @@ export async function run(): Promise<void> {
     warn: (m) => core.warning(m),
   });
 
-  const target = `${hostOwner}/${hostRepo}@${branch}`;
-  core.info(`actions-attic: ${owner}/${repo} -> ${target} (mode ${mode}, budget ${maxRequests} requests)`);
+  core.info(
+    `actions-attic: ${owner}/${repo} -> ${hostOwner}/${hostRepo} ${ref} ` +
+      `(mode ${mode}, budget ${maxRequests} requests)`,
+  );
 
-  const backend = await BranchBackend.open(api, hostOwner, hostRepo, branch, {
+  const backend = await RefBackend.open(api, hostOwner, hostRepo, ref, {
     committer: { name: 'actions-attic', email: 'actions-attic@users.noreply.github.com' },
     warn: (m) => core.warning(m),
   });
-  if (backend.isNew) core.info(`branch ${branch} does not exist yet; this run will create it`);
+  if (backend.isNew) core.info(`${ref} does not exist yet; this run will create it`);
 
   const summary = await runArchive({
     api,
@@ -96,11 +108,20 @@ export async function run(): Promise<void> {
   core.setOutput('backfill-frontier', summary.frontier ?? '');
   core.setOutput('backfill-complete', summary.archive.manifest.backfillComplete);
   core.setOutput('requests-used', summary.requests);
-  core.setOutput('branch', branch);
+  core.setOutput('ref', ref);
+  core.setOutput('branch', ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '');
   core.setOutput('source-repository', `${owner}/${repo}`);
+  const browseUrl = summary.commit?.sha
+    ? `${serverUrl}/${hostOwner}/${hostRepo}/tree/${summary.commit.sha}`
+    : '';
+  core.setOutput('archive-url', browseUrl);
 
-  if (summary.commit) core.info(`committed ${summary.commit.sha ?? ''}: ${summary.message}`);
-  else core.info('nothing new to archive; no commit made');
+  if (summary.commit) {
+    core.info(`committed ${summary.commit.sha ?? ''}: ${summary.message}`);
+    if (browseUrl) core.info(`browse it at ${browseUrl}`);
+  } else {
+    core.info('nothing new to archive; no commit made');
+  }
 
   if (summary.checkpoint) {
     core.notice(
@@ -119,8 +140,8 @@ export async function run(): Promise<void> {
     .addHeading(`actions-attic: ${owner}/${repo}`, 3)
     .addRaw(
       summary.commit
-        ? `Committed \`${summary.message}\` to \`${branch}\`.`
-        : `Nothing new on \`${branch}\`; no commit made.`,
+        ? `Committed \`${summary.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ''}`
+        : `Nothing new on \`${ref}\`; no commit made.`,
       true,
     )
     .addBreak()

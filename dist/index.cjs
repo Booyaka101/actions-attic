@@ -19588,18 +19588,27 @@ function gitBlobSha(content) {
   const body = Buffer.from(content, "utf8");
   return (0, import_node_crypto.createHash)("sha1").update(`blob ${body.length}\0`).update(body).digest("hex");
 }
-var BranchBackend = class _BranchBackend {
-  constructor(api, owner, repo, branch, opts = {}) {
+function normalizeRef(value) {
+  const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
+  if (!trimmed) throw new Error("ref must not be empty");
+  const ref = trimmed.startsWith("refs/") ? trimmed : `refs/heads/${trimmed}`;
+  if (ref.split("/").length < 3 || ref.split("/").some((part) => part === "")) {
+    throw new Error(`ref must look like refs/<namespace>/<name>, got "${value}"`);
+  }
+  return ref;
+}
+var RefBackend = class _RefBackend {
+  constructor(api, owner, repo, ref, opts = {}) {
     this.api = api;
     this.owner = owner;
     this.repo = repo;
-    this.branch = branch;
+    this.ref = ref;
     this.opts = opts;
   }
   api;
   owner;
   repo;
-  branch;
+  ref;
   opts;
   tree = /* @__PURE__ */ new Map();
   staged = /* @__PURE__ */ new Map();
@@ -19607,13 +19616,17 @@ var BranchBackend = class _BranchBackend {
   headSha = null;
   treeSha = null;
   loaded = false;
-  static async open(api, owner, repo, branch, opts) {
-    const backend = new _BranchBackend(api, owner, repo, branch, opts);
+  static async open(api, owner, repo, ref, opts) {
+    const backend = new _RefBackend(api, owner, repo, normalizeRef(ref), opts);
     await backend.load();
     return backend;
   }
   get base() {
     return `/repos/${this.owner}/${this.repo}`;
+  }
+  /** `refs/attic/archive` addresses as `attic/archive` on the git ref endpoints. */
+  get refPath() {
+    return this.ref.replace(/^refs\//, "").split("/").map(encodeURIComponent).join("/");
   }
   async load() {
     this.tree.clear();
@@ -19622,7 +19635,7 @@ var BranchBackend = class _BranchBackend {
     this.treeSha = null;
     try {
       const ref = await this.api.request(
-        `${this.base}/git/ref/heads/${encodeURIComponent(this.branch)}`
+        `${this.base}/git/ref/${this.refPath}`
       );
       this.headSha = ref.data.object.sha;
     } catch (err) {
@@ -19639,14 +19652,14 @@ var BranchBackend = class _BranchBackend {
       { params: { recursive: "1" } }
     );
     if (tree.data.truncated) {
-      this.opts.warn?.("archive branch tree came back truncated; some months may be re-fetched");
+      this.opts.warn?.("archive tree came back truncated; some months may be re-fetched");
     }
     for (const entry of tree.data.tree) {
       if (entry.type === "blob") this.tree.set(entry.path, entry.sha);
     }
     this.loaded = true;
   }
-  /** True when the branch does not exist yet. */
+  /** True when the ref does not exist yet. */
   get isNew() {
     return this.loaded && this.headSha === null;
   }
@@ -19707,20 +19720,20 @@ var BranchBackend = class _BranchBackend {
     const newHead = commitRes.data.sha;
     try {
       if (this.headSha) {
-        await this.api.request(`${this.base}/git/refs/heads/${encodeURIComponent(this.branch)}`, {
+        await this.api.request(`${this.base}/git/refs/${this.refPath}`, {
           method: "PATCH",
           body: { sha: newHead }
         });
       } else {
         await this.api.request(`${this.base}/git/refs`, {
           method: "POST",
-          body: { ref: `refs/heads/${this.branch}`, sha: newHead }
+          body: { ref: this.ref, sha: newHead }
         });
       }
     } catch (err) {
       const raced = err instanceof HttpError && (err.status === 409 || err.status === 422);
       if (raced && mayRetry) {
-        this.opts.warn?.(`branch ${this.branch} moved under us (${err.status}); reloading and retrying once`);
+        this.opts.warn?.(`${this.ref} moved under us (${err.status}); reloading and retrying once`);
         const staged = new Map(this.staged);
         await this.load();
         this.staged = staged;
@@ -19728,7 +19741,7 @@ var BranchBackend = class _BranchBackend {
       }
       if (raced) {
         throw new Error(
-          `could not update refs/heads/${this.branch} after one retry: ${err.message}. Another job is probably writing the archive branch at the same time; re-run once it finishes.`
+          `could not update ${this.ref} after one retry: ${err.message}. Another job is probably writing the archive at the same time; re-run once it finishes.`
         );
       }
       throw err;
@@ -19741,7 +19754,7 @@ var BranchBackend = class _BranchBackend {
     return { changed: blobs.map((b) => b.path).sort(), sha: newHead };
   }
   describe() {
-    return `${this.owner}/${this.repo}@${this.branch}`;
+    return `${this.owner}/${this.repo}@${this.ref}`;
   }
 };
 var joinPath = import_node_path.posix.join;
@@ -20553,6 +20566,7 @@ function boolInput(name) {
   if (raw === "true") return true;
   throw new Error(`input "${name}" must be true or false, got "${raw}"`);
 }
+var DEFAULT_REF = "refs/attic/archive";
 async function run() {
   const token = input("token", process.env.GITHUB_TOKEN ?? "");
   if (!token) {
@@ -20566,17 +20580,21 @@ async function run() {
   }
   const host = process.env.GITHUB_REPOSITORY ?? "";
   if (!host) {
-    setFailed("GITHUB_REPOSITORY is not set, so there is nowhere to write the archive branch.");
+    setFailed("GITHUB_REPOSITORY is not set, so there is nowhere to write the archive.");
     return;
   }
   const { owner: hostOwner, repo: hostRepo } = parseRepo(host);
   const { owner, repo } = parseRepo(input("repository", host));
-  const branch = input("branch", "actions-attic");
+  const explicitRef = getInput("ref").trim();
+  const legacyBranch = getInput("branch").trim();
+  if (explicitRef && legacyBranch) warning("both `ref` and `branch` are set; using `ref`.");
+  const ref = normalizeRef(explicitRef || legacyBranch || DEFAULT_REF);
   const months = intInput("backfill-months", 14, 1, 120);
   const maxRequests = intInput("max-requests", 800, 1, 1e6);
   const maxPages = intInput("max-pages", 50, 1, 1e3);
   const skipChecks = boolInput("skip-checks");
   const skipStatuses = boolInput("skip-statuses");
+  const serverUrl = process.env.GITHUB_SERVER_URL ?? "https://github.com";
   const api = new Api({
     token,
     maxRequests,
@@ -20584,13 +20602,14 @@ async function run() {
     log: (m) => info(m),
     warn: (m) => warning(m)
   });
-  const target = `${hostOwner}/${hostRepo}@${branch}`;
-  info(`actions-attic: ${owner}/${repo} -> ${target} (mode ${mode}, budget ${maxRequests} requests)`);
-  const backend = await BranchBackend.open(api, hostOwner, hostRepo, branch, {
+  info(
+    `actions-attic: ${owner}/${repo} -> ${hostOwner}/${hostRepo} ${ref} (mode ${mode}, budget ${maxRequests} requests)`
+  );
+  const backend = await RefBackend.open(api, hostOwner, hostRepo, ref, {
     committer: { name: "actions-attic", email: "actions-attic@users.noreply.github.com" },
     warn: (m) => warning(m)
   });
-  if (backend.isNew) info(`branch ${branch} does not exist yet; this run will create it`);
+  if (backend.isNew) info(`${ref} does not exist yet; this run will create it`);
   const summary2 = await runArchive({
     api,
     backend,
@@ -20612,10 +20631,17 @@ async function run() {
   setOutput("backfill-frontier", summary2.frontier ?? "");
   setOutput("backfill-complete", summary2.archive.manifest.backfillComplete);
   setOutput("requests-used", summary2.requests);
-  setOutput("branch", branch);
+  setOutput("ref", ref);
+  setOutput("branch", ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : "");
   setOutput("source-repository", `${owner}/${repo}`);
-  if (summary2.commit) info(`committed ${summary2.commit.sha ?? ""}: ${summary2.message}`);
-  else info("nothing new to archive; no commit made");
+  const browseUrl = summary2.commit?.sha ? `${serverUrl}/${hostOwner}/${hostRepo}/tree/${summary2.commit.sha}` : "";
+  setOutput("archive-url", browseUrl);
+  if (summary2.commit) {
+    info(`committed ${summary2.commit.sha ?? ""}: ${summary2.message}`);
+    if (browseUrl) info(`browse it at ${browseUrl}`);
+  } else {
+    info("nothing new to archive; no commit made");
+  }
   if (summary2.checkpoint) {
     notice(
       `checkpointed at ${summary2.frontier ?? "the current frontier"}: ${summary2.checkpoint}. The next scheduled run resumes from here.`
@@ -20625,7 +20651,7 @@ async function run() {
   const n2 = (value) => value.toLocaleString("en-US");
   const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""}. The next run continues from here.`;
   await summary.addHeading(`actions-attic: ${owner}/${repo}`, 3).addRaw(
-    summary2.commit ? `Committed \`${summary2.message}\` to \`${branch}\`.` : `Nothing new on \`${branch}\`; no commit made.`,
+    summary2.commit ? `Committed \`${summary2.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ""}` : `Nothing new on \`${ref}\`; no commit made.`,
     true
   ).addBreak().addTable([
     [

@@ -32,10 +32,10 @@ export function makeGitServer({ failRefCreate = 0, refCreateAlwaysFails = false 
     const body = init.body ? JSON.parse(init.body) : null;
     const method = init.method ?? 'GET';
 
-    if (method === 'GET' && path.startsWith('/ref/heads/')) {
-      const name = decodeURIComponent(path.slice('/ref/heads/'.length));
+    if (method === 'GET' && path.startsWith('/ref/')) {
+      const name = decodeURIComponent(path.slice('/ref/'.length));
       const sha = refs.get(name);
-      return sha ? ok({ ref: `refs/heads/${name}`, object: { sha } }) : fail(404, 'Not Found');
+      return sha ? ok({ ref: `refs/${name}`, object: { sha } }) : fail(404, 'Not Found');
     }
     if (method === 'GET' && path.startsWith('/commits/')) {
       const commit = commits.get(path.slice('/commits/'.length));
@@ -77,7 +77,7 @@ export function makeGitServer({ failRefCreate = 0, refCreateAlwaysFails = false 
     }
     if (method === 'POST' && path === '/refs') {
       state.refCreateAttempts++;
-      const name = body.ref.replace('refs/heads/', '');
+      const name = body.ref.replace(/^refs\//, '');
       if (refCreateAlwaysFails) return fail(422, 'Reference update failed');
       if (state.refCreateAttempts <= failRefCreate) {
         // A racing job got there first, with a commit of its own.
@@ -98,8 +98,8 @@ export function makeGitServer({ failRefCreate = 0, refCreateAlwaysFails = false 
       refs.set(name, body.sha);
       return ok({ ref: body.ref, object: { sha: body.sha } });
     }
-    if (method === 'PATCH' && path.startsWith('/refs/heads/')) {
-      refs.set(decodeURIComponent(path.slice('/refs/heads/'.length)), body.sha);
+    if (method === 'PATCH' && path.startsWith('/refs/')) {
+      refs.set(decodeURIComponent(path.slice('/refs/'.length)), body.sha);
       return ok({ object: { sha: body.sha } });
     }
     return fail(404, `unhandled ${method} ${path}`);

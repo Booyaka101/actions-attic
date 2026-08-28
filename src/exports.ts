@@ -4,7 +4,7 @@ export { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
 export type { ApiOptions, ListOptions, ListResult } from './api.js';
 export { Archive, SCHEMA_VERSION, emptyManifest, parseJsonl, recordPath, shaPath } from './archive.js';
 export type { CheckRecord, Kind, Manifest, RunRecord, StatusRecord } from './archive.js';
-export { BranchBackend, FsBackend, gitBlobSha } from './backend.js';
+export { BranchBackend, FsBackend, RefBackend, gitBlobSha, normalizeRef } from './backend.js';
 export type { Backend, CommitResult } from './backend.js';
 export { backfill, backfillMessage, remainingMonths } from './backfill.js';
 export type { BackfillOptions, BackfillResult } from './backfill.js';

@@ -10,10 +10,14 @@ inputs:
     description: 'Token used to read Actions data and write the archive branch.'
     required: false
     default: ${{ github.token }}
-  branch:
-    description: 'Orphan branch that holds the archive.'
+  ref:
+    description: 'Git ref holding the archive. Default refs/attic/archive, which is not a branch.'
     required: false
-    default: 'actions-attic'
+    default: ''
+  branch:
+    description: 'Deprecated since 1.1.0. A branch name to write to instead of the default ref.'
+    required: false
+    default: ''
   mode:
     description: 'auto (top up then continue the backfill), backfill, or incremental.'
     required: false
@@ -60,8 +64,12 @@ outputs:
     description: 'true once the backfill has reached backfill-months.'
   requests-used:
     description: 'API requests spent this run.'
+  ref:
+    description: 'Ref that was written.'
   branch:
-    description: 'Archive branch that was written.'
+    description: 'Branch name when the ref is under refs/heads/, otherwise empty.'
+  archive-url:
+    description: 'Web URL for browsing the archive commit, empty when nothing was committed.'
   source-repository:
     description: 'Repository whose history was read.'
 

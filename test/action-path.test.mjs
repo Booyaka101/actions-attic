@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Api } from '../lib/api.js';
 import { Archive } from '../lib/archive.js';
-import { BranchBackend } from '../lib/backend.js';
+import { RefBackend } from '../lib/backend.js';
 import { runArchive } from '../lib/run.js';
 import { makeGitServer } from './helpers/fake-git.mjs';
 import { makeFakeGitHub, makeRuns } from './helpers/fake-github.mjs';
@@ -30,7 +30,7 @@ function apiFor(fetchImpl, maxRequests) {
 
 async function night(server, maxRequests, months = 3) {
   const api = apiFor(server.fetchImpl, maxRequests);
-  const backend = await BranchBackend.open(api, 'acme', 'widget', 'actions-attic', { warn: quiet });
+  const backend = await RefBackend.open(api, 'acme', 'widget', 'actions-attic', { warn: quiet });
   return runArchive({
     api,
     backend,
@@ -63,10 +63,10 @@ test('a night that spends its whole budget still commits what it captured', asyn
   assert.ok(first.runs > 0, 'the walk captured runs');
   assert.ok(first.commit, 'a budget-exhausted night must still land a commit');
   assert.ok(first.checkpoint, 'and must record why it stopped');
-  assert.equal(server.git.refs.get('actions-attic'), first.commit.sha);
+  assert.equal(server.git.refs.get('heads/actions-attic'), first.commit.sha);
 
   const verify = await Archive.open(
-    await BranchBackend.open(apiFor(server.fetchImpl, 500), 'acme', 'widget', 'actions-attic'),
+    await RefBackend.open(apiFor(server.fetchImpl, 500), 'acme', 'widget', 'actions-attic'),
     'acme/widget',
   );
   assert.equal(verify.manifest.counts.runs, first.runs, 'what was reported is what is on the branch');
@@ -101,7 +101,7 @@ test('a quiet night on a large archive costs only a handful of requests', async 
 
   const uploadsBefore = server.git.state.blobUploads;
   const api = apiFor(server.fetchImpl, 500);
-  const backend = await BranchBackend.open(api, 'acme', 'widget', 'actions-attic', { warn: quiet });
+  const backend = await RefBackend.open(api, 'acme', 'widget', 'actions-attic', { warn: quiet });
   const summary = await runArchive({
     api,
     backend,
@@ -135,7 +135,7 @@ test('a month is never marked complete before its runs are on the branch', async
 
     // Audit the branch independently of the run that just wrote it.
     const audit = await Archive.open(
-      await BranchBackend.open(apiFor(server.fetchImpl, 9999), 'acme', 'widget', 'actions-attic'),
+      await RefBackend.open(apiFor(server.fetchImpl, 9999), 'acme', 'widget', 'actions-attic'),
       'acme/widget',
     );
     assert.deepEqual(await audit.recount(), audit.manifest.counts, 'the manifest must match what is on the branch');

@@ -1,6 +1,6 @@
 # Copy this to .github/workflows/attic.yml in the repository you want to archive.
 #
-# The first run creates the orphan branch and starts walking history backwards.
+# The first run creates refs/attic/archive and starts walking history backwards.
 # If it runs out of request budget it commits what it has and picks up where it
 # left off the next night. Once history is captured each run takes seconds.
 
@@ -19,7 +19,7 @@ permissions:
   contents: write
 
 concurrency:
-  # Two jobs writing the archive branch at once would race on the ref.
+  # Two jobs writing the archive at once would race on the ref.
   group: actions-attic
   cancel-in-progress: false
 
@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: Booyaka101/actions-attic@v1
         with:
-          branch: actions-attic
           backfill-months: 14
           max-requests: 800
+          # ref: refs/attic/archive   # the default; not a branch, so it stays
+          #                           # out of the branch list and out of on:push

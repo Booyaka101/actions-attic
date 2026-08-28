@@ -1,6 +1,6 @@
 # actions-attic build state
 
-**Status: v1.0.0 shipped.** Published to npm and released on GitHub, 2026-08-28. The Marketplace listing form is filled and submitted; it needs one 6-digit code from the owner's authenticator app to land.
+**Status: v1.1.0 shipped.** Published to npm and released on GitHub, 2026-08-28. v1.1.0 moved the archive off an orphan branch onto `refs/attic/archive`. The Marketplace listing form is filled and submitted; it needs one 6-digit code from the owner's authenticator app to land.
 
 Built and reviewed 2026-08-28.
 
@@ -82,6 +82,24 @@ and a `stats` table that flags any disagreement between the manifest and the fil
 
 Docs assets in `docs/` are rendered by `scripts/screenshots.mjs` from the verbatim captures in
 `docs/sessions/`; every line in them is real output from a live run.
+
+## 1.1.0: the archive is a ref, not a branch
+
+An orphan branch is a thing the repository owner has to look after. It shows in the branch list, it
+comes down on every clone, it can be picked as a PR base, and worst of all a nightly commit to it
+fires `on: push: branches: ['**']` workflows, so we would impose a CI run a night on every repo that
+has one. Measured on `Booyaka101/rimpatch`, which has an active push workflow: writing
+`refs/attic/archive` triggered zero runs, and `git branch -a` after a fresh clone still showed only
+`main`.
+
+- `RefBackend` replaces `BranchBackend`, which stays as a deprecated alias so 1.0 imports keep working.
+- `normalizeRef` treats a bare name as a branch, so `ref: my-archive` still means `refs/heads/my-archive`.
+- The `branch` input is deprecated but honoured, so upgrading never moves an existing archive.
+- New `archive-url` output and job-summary link, since GitHub's file browser cannot resolve a custom
+  ref but browses any commit by SHA. Verified 200 on a real commit.
+- New `actions-attic pull <owner/repo>` reads the ref over the API into a directory, so nobody has to
+  remember `git fetch origin 'refs/attic/*:refs/attic/*'`. Verified from a clean directory: 4 files,
+  7 API requests, then `stats`, `build` and `flake` all read it.
 
 ## Shipped
 

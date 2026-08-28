@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
 import { Archive, type RunRecord } from './archive.js';
-import { FsBackend } from './backend.js';
+import { FsBackend, RefBackend, normalizeRef } from './backend.js';
 import { computeFlake, formatFlake } from './flake.js';
 import { buildIndex } from './index.js';
 import { assertMonth } from './months.js';
@@ -28,6 +28,7 @@ COMMANDS
   sync <owner/repo>          Top up new runs, then continue the backfill (default mode: auto)
   backfill <owner/repo>      Walk history backwards only
   incremental <owner/repo>   Append new runs only
+  pull <owner/repo>          Copy an archive ref down into a local directory
   build                      Build a SQLite index over the archive
   flake <workflow>           Flake rate for one workflow
   stats                      What the archive currently holds
@@ -43,6 +44,7 @@ FETCH OPTIONS (sync, backfill, incremental)
   --max-pages <n>            Page ceiling for an incremental catch-up (default: 50)
   --no-checks                Skip check runs
   --no-statuses              Skip commit statuses
+  --ref <ref>                Archive ref for \`pull\` (default: refs/attic/archive)
   --api <url>                API base URL (default: https://api.github.com)
 
 READ OPTIONS
@@ -55,6 +57,7 @@ READ OPTIONS
 
 EXAMPLES
   actions-attic sync cli/cli --archive ./attic --months 14
+  actions-attic pull myorg/myrepo --archive ./attic
   actions-attic build --archive ./attic
   actions-attic flake build-linux --since 2025-09 --archive ./attic
   actions-attic stats --archive ./attic
@@ -178,7 +181,7 @@ async function openArchive(dir: string, repo = 'unknown/unknown'): Promise<{ arc
   if (backend.paths().length === 0) {
     throw new UsageError(
       `no archive found in ${display(dir)}. Run \`actions-attic sync <owner/repo> --archive ${display(dir)}\` ` +
-        'first, or point --archive at a checkout of your actions-attic branch.',
+        `first, or \`actions-attic pull <owner/repo> --archive ${display(dir)}\` to fetch an existing one.`,
     );
   }
   return { archive: await Archive.open(backend, repo), dir };
@@ -262,6 +265,54 @@ function jsonSummary(summary: Awaited<ReturnType<typeof runArchive>>, dir: strin
     checkpoint: summary.checkpoint,
     totals: summary.archive.manifest.counts,
   };
+}
+
+/**
+ * Copy the archive ref into a directory. Reading it over the API rather than
+ * with git means no refspec to remember and no git in the way.
+ */
+async function cmdPull(args: Args): Promise<number> {
+  const { owner, repo } = requireRepo(args);
+  const dir = resolve(str(args, 'archive', 'attic'));
+  const ref = asUsage(() => normalizeRef(str(args, 'ref', 'refs/attic/archive')));
+  const api = new Api({
+    token: resolveToken(args),
+    maxRequests: int(args, 'max-requests', 800, 1, 1_000_000),
+    baseUrl: str(args, 'api', process.env.GITHUB_API_URL ?? 'https://api.github.com'),
+    log: (m) => process.stderr.write(`${m}
+`),
+    warn: (m) => process.stderr.write(`warning: ${m}
+`),
+  });
+
+  const remote = await RefBackend.open(api, owner, repo, ref);
+  if (remote.isNew) {
+    throw new UsageError(
+      `${owner}/${repo} has no archive at ${ref}. Check the ref, or run \`actions-attic sync ${owner}/${repo}\` ` +
+        'to build one locally.',
+    );
+  }
+
+  const local = await FsBackend.open(dir);
+  const paths = remote.paths();
+  for (const path of paths) {
+    const content = await remote.read(path);
+    if (content !== null) local.write(path, content);
+  }
+  const written = await local.commit('pull');
+
+  if (args.flags.get('json') === true) {
+    process.stdout.write(`${JSON.stringify({ ref, archive: dir, files: paths.length, changed: written?.changed ?? [] }, null, 2)}
+`);
+    return 0;
+  }
+  process.stdout.write(
+    `pulled ${plural(paths.length, 'file')} from ${owner}/${repo} ${ref} into ${display(dir)}
+` +
+      `${plural(written ? written.changed.length : 0, 'file')} changed, ${plural(api.requests, 'API request')} used
+`,
+  );
+  return 0;
 }
 
 async function cmdBuild(args: Args): Promise<number> {
@@ -415,6 +466,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdSync(args, 'backfill');
     case 'incremental':
       return cmdSync(args, 'incremental');
+    case 'pull':
+      return cmdPull(args);
     case 'build':
       return cmdBuild(args);
     case 'flake':

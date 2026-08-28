@@ -107,11 +107,29 @@ interface TreeEntry {
 }
 
 /**
- * An orphan branch written with blobs -> tree -> commit -> ref. Files that hash
- * to the sha already in the tree are never uploaded, so an unchanged night
- * costs zero writes and produces no commit.
+ * Turn what a user typed into a full ref. A bare name is a branch, so
+ * `actions-attic` still means `refs/heads/actions-attic`, while the default
+ * `refs/attic/archive` keeps the archive out of the branch list entirely.
  */
-export class BranchBackend implements Backend {
+export function normalizeRef(value: string): string {
+  const trimmed = value.trim().replace(/^\/+|\/+$/g, '');
+  if (!trimmed) throw new Error('ref must not be empty');
+  const ref = trimmed.startsWith('refs/') ? trimmed : `refs/heads/${trimmed}`;
+  if (ref.split('/').length < 3 || ref.split('/').some((part) => part === '')) {
+    throw new Error(`ref must look like refs/<namespace>/<name>, got "${value}"`);
+  }
+  return ref;
+}
+
+/**
+ * A git ref written with blobs -> tree -> commit -> ref. Files that hash to the
+ * sha already in the tree are never uploaded, so an unchanged night costs zero
+ * writes and produces no commit.
+ *
+ * The ref does not have to be a branch. Outside `refs/heads/` it stays out of
+ * the branch list, out of a default clone, and out of `on: push` triggers.
+ */
+export class RefBackend implements Backend {
   private tree = new Map<string, string>();
   private staged = new Map<string, string>();
   private cache = new Map<string, string>();
@@ -123,7 +141,7 @@ export class BranchBackend implements Backend {
     private readonly api: Api,
     private readonly owner: string,
     private readonly repo: string,
-    private readonly branch: string,
+    readonly ref: string,
     private readonly opts: {
       committer?: { name: string; email: string };
       warn?: (msg: string) => void;
@@ -134,16 +152,21 @@ export class BranchBackend implements Backend {
     api: Api,
     owner: string,
     repo: string,
-    branch: string,
+    ref: string,
     opts?: { committer?: { name: string; email: string }; warn?: (msg: string) => void },
-  ): Promise<BranchBackend> {
-    const backend = new BranchBackend(api, owner, repo, branch, opts);
+  ): Promise<RefBackend> {
+    const backend = new RefBackend(api, owner, repo, normalizeRef(ref), opts);
     await backend.load();
     return backend;
   }
 
   private get base(): string {
     return `/repos/${this.owner}/${this.repo}`;
+  }
+
+  /** `refs/attic/archive` addresses as `attic/archive` on the git ref endpoints. */
+  private get refPath(): string {
+    return this.ref.replace(/^refs\//, '').split('/').map(encodeURIComponent).join('/');
   }
 
   private async load(): Promise<void> {
@@ -153,13 +176,13 @@ export class BranchBackend implements Backend {
     this.treeSha = null;
     try {
       const ref = await this.api.request<{ object: { sha: string } }>(
-        `${this.base}/git/ref/heads/${encodeURIComponent(this.branch)}`,
+        `${this.base}/git/ref/${this.refPath}`,
       );
       this.headSha = ref.data.object.sha;
     } catch (err) {
       if (err instanceof HttpError && err.status === 404) {
         this.loaded = true;
-        return; // branch does not exist yet; first commit creates it as an orphan
+        return; // the ref does not exist yet; the first commit creates it
       }
       throw err;
     }
@@ -170,7 +193,7 @@ export class BranchBackend implements Backend {
       { params: { recursive: '1' } },
     );
     if (tree.data.truncated) {
-      this.opts.warn?.('archive branch tree came back truncated; some months may be re-fetched');
+      this.opts.warn?.('archive tree came back truncated; some months may be re-fetched');
     }
     for (const entry of tree.data.tree) {
       if (entry.type === 'blob') this.tree.set(entry.path, entry.sha);
@@ -178,7 +201,7 @@ export class BranchBackend implements Backend {
     this.loaded = true;
   }
 
-  /** True when the branch does not exist yet. */
+  /** True when the ref does not exist yet. */
   get isNew(): boolean {
     return this.loaded && this.headSha === null;
   }
@@ -252,20 +275,20 @@ export class BranchBackend implements Backend {
     const newHead = commitRes.data.sha;
     try {
       if (this.headSha) {
-        await this.api.request(`${this.base}/git/refs/heads/${encodeURIComponent(this.branch)}`, {
+        await this.api.request(`${this.base}/git/refs/${this.refPath}`, {
           method: 'PATCH',
           body: { sha: newHead },
         });
       } else {
         await this.api.request(`${this.base}/git/refs`, {
           method: 'POST',
-          body: { ref: `refs/heads/${this.branch}`, sha: newHead },
+          body: { ref: this.ref, sha: newHead },
         });
       }
     } catch (err) {
       const raced = err instanceof HttpError && (err.status === 409 || err.status === 422);
       if (raced && mayRetry) {
-        this.opts.warn?.(`branch ${this.branch} moved under us (${(err as HttpError).status}); reloading and retrying once`);
+        this.opts.warn?.(`${this.ref} moved under us (${(err as HttpError).status}); reloading and retrying once`);
         const staged = new Map(this.staged);
         await this.load();
         this.staged = staged;
@@ -273,8 +296,8 @@ export class BranchBackend implements Backend {
       }
       if (raced) {
         throw new Error(
-          `could not update refs/heads/${this.branch} after one retry: ${(err as HttpError).message}. ` +
-            'Another job is probably writing the archive branch at the same time; re-run once it finishes.',
+          `could not update ${this.ref} after one retry: ${(err as HttpError).message}. ` +
+            'Another job is probably writing the archive at the same time; re-run once it finishes.',
         );
       }
       throw err;
@@ -289,8 +312,11 @@ export class BranchBackend implements Backend {
   }
 
   describe(): string {
-    return `${this.owner}/${this.repo}@${this.branch}`;
+    return `${this.owner}/${this.repo}@${this.ref}`;
   }
 }
+
+/** @deprecated Renamed to RefBackend in 1.1.0. Kept so 1.0 imports keep working. */
+export const BranchBackend = RefBackend;
 
 export const joinPath = posix.join;
