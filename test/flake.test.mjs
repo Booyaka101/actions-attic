@@ -73,3 +73,14 @@ test('a workflow can also be selected by workflow_id', async () => {
   const report = computeFlake(await fixtureRuns(), { workflow: '111', since: '2025-09' });
   assert.equal(report.runs, 412);
 });
+
+test('a workflow name matches case-insensitively and reports its real casing', async () => {
+  const runs = [
+    { id: 1, name: 'CI', conclusion: 'success', created_at: '2026-01-02T00:00:00Z', run_attempt: 1 },
+    { id: 2, name: 'CI', conclusion: 'failure', created_at: '2026-01-03T00:00:00Z', run_attempt: 1 },
+  ];
+  const report = computeFlake(runs, { workflow: 'ci' });
+  assert.equal(report.runs, 2);
+  assert.equal(report.workflow, 'CI');
+  assert.equal(formatFlake(report), 'CI: 2 runs, 1 success, 1 failure, flake rate 50.0% (peak 2026-01 at 50.0%)');
+});

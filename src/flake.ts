@@ -45,6 +45,7 @@ export function computeFlake(runs: RunRecord[], opts: FlakeOptions): FlakeReport
   const monthly = new Map<Month, { success: number; failure: number }>();
   let success = 0;
   let failure = 0;
+  let canonical = opts.workflow;
 
   for (const run of runs) {
     const month = monthOf(run.created_at);
@@ -52,6 +53,7 @@ export function computeFlake(runs: RunRecord[], opts: FlakeOptions): FlakeReport
     if (opts.until && month > opts.until) continue;
     if (run.name) candidates.add(run.name);
     if (!matches(run, opts.workflow)) continue;
+    if (run.name) canonical = run.name;
     const conclusion = run.conclusion ?? '';
     if (!DECIDED.has(conclusion)) continue;
 
@@ -83,7 +85,7 @@ export function computeFlake(runs: RunRecord[], opts: FlakeOptions): FlakeReport
   }
 
   return {
-    workflow: opts.workflow,
+    workflow: canonical,
     runs: success + failure,
     success,
     failure,
@@ -94,10 +96,10 @@ export function computeFlake(runs: RunRecord[], opts: FlakeOptions): FlakeReport
   };
 }
 
+/** Name match is case-insensitive; a workflow id also selects. */
 function matches(run: RunRecord, workflow: string): boolean {
-  if (run.name === workflow) return true;
-  if (String(run.workflow_id) === workflow) return true;
-  return false;
+  if (run.name != null && run.name.toLowerCase() === workflow.toLowerCase()) return true;
+  return String(run.workflow_id) === workflow;
 }
 
 const n = (value: number) => value.toLocaleString('en-US');
