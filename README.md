@@ -108,6 +108,31 @@ last change      2026-08-28T01:11:00.124Z
 
 `flake` counts only runs that concluded `success` or `failure`; cancelled, skipped and still-running runs are not flake signal. The peak is the worst month by failure rate.
 
+Checks and statuses come from the same walk. One month of [`numpy/numpy`](https://github.com/numpy/numpy), which still uses CircleCI commit statuses alongside Actions checks:
+
+```
+$ npx actions-attic backfill numpy/numpy --archive attic-numpy --months 1 --max-requests 400
+2026-08: fetching checks/statuses for 680 new commits
+stopping inside 2026-08; the next run resumes at the windows still outstanding
+attic: backfill 2026-08 in progress (10,829 runs)
+7 file(s) written to attic-numpy (10829 runs, 6981 checks, 969 statuses new)
+400 API requests used
+checkpointed: reached the max-requests ceiling of 400
+
+$ head -1 attic-numpy/statuses/2026-08.jsonl
+{"id":51478479295,"head_sha":"996fb96...","state":"pending","context":"ci/circleci: build",
+ "description":"CircleCI is running your tests","target_url":"https://circleci.com/gh/numpy/numpy/57451",
+ "created_at":"2026-08-01T10:32:14Z","updated_at":"2026-08-01T10:32:14Z"}
+
+$ npx actions-attic build --archive attic-numpy
+indexed 10829 runs, 6981 checks, 969 statuses across 2 month(s) into attic-numpy/attic.db
+
+$ npx actions-attic flake "Linux tests" --archive attic-numpy
+Linux tests: 460 runs, 418 success, 42 failure, flake rate 9.1% (peak 2026-08 at 9.1%)
+```
+
+That run stopped on its request ceiling with the month's checks half done. The next invocation picks up at the commits still outstanding rather than starting over.
+
 ## Configuration
 
 | Input | Default | Notes |

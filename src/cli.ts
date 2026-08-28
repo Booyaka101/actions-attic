@@ -282,14 +282,31 @@ async function cmdFlake(args: Args): Promise<number> {
     return 0;
   }
   if (report.runs === 0) {
-    const known = report.candidates.length
-      ? `\nWorkflows in this window: ${report.candidates.join(', ')}`
-      : '\nThe archive has no runs in this window.';
-    process.stdout.write(`${workflow}: no completed runs in the selected window.${known}\n`);
+    process.stdout.write(`${workflow}: no completed runs in the selected window.\n${suggest(workflow, report.candidates)}\n`);
     return 1;
   }
   process.stdout.write(`${formatFlake(report)}\n`);
   return 0;
+}
+
+/** Closest workflow names first; a busy repo can hold dozens. */
+function suggest(query: string, candidates: string[]): string {
+  if (candidates.length === 0) return 'The archive has no runs in this window.';
+  const needle = query.toLowerCase();
+  const ranked = [...candidates].sort((a, b) => score(b, needle) - score(a, needle));
+  const shown = ranked.slice(0, 10);
+  const rest = ranked.length - shown.length;
+  return (
+    `Workflows in this window:\n${shown.map((c) => `  ${c}`).join('\n')}` +
+    (rest > 0 ? `\n  ... and ${rest} more (--json lists them all)` : '')
+  );
+}
+
+function score(name: string, needle: string): number {
+  const lower = name.toLowerCase();
+  if (lower === needle) return 3;
+  if (lower.includes(needle)) return 2;
+  return needle.split(/\s+/).some((word) => word.length > 2 && lower.includes(word)) ? 1 : 0;
 }
 
 async function cmdStats(args: Args): Promise<number> {

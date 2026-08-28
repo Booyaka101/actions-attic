@@ -87,7 +87,7 @@ test('flake over the fixture archive prints the documented line', async () => {
 test('flake on an unknown workflow lists the workflows that are there', async () => {
   const res = await attic(['flake', 'nope', '--archive', FIXTURE]);
   assert.equal(res.code, 1);
-  assert.match(res.stdout, /Workflows in this window: build-linux, docs/);
+  assert.match(res.stdout, /Workflows in this window:\n {2}build-linux\n {2}docs/);
 });
 
 test('stats summarises the archive', async () => {
