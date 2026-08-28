@@ -1,8 +1,8 @@
 # actions-attic — build state
 
-**Status: v1.0.0 complete.** Feature-complete, tested, packaged, verified end to end against live GitHub. Not published (owner ships that step).
+**Status: v1.0.0 complete, and reviewed.** Feature-complete, tested, packaged, verified end to end against live GitHub. Not published (owner ships that step).
 
-Built 2026-08-28.
+Built and reviewed 2026-08-28.
 
 ## Phase 0 verification (all resources re-fetched live, none missing)
 
@@ -30,7 +30,7 @@ Built 2026-08-28.
 - **The Action itself, live.** Compiled `dist/index.cjs` run against `Booyaka101/rimpatch` with real inputs: created a real orphan branch (parent count 0), committed `attic: backfill 2025-07..2026-08 (14 runs)`, wrote `runs/`, `checks/`, `shas/` and `manifest.json`, emitted all nine outputs and a job summary. A second run made no commit. Test branch deleted afterwards; `rimpatch` is back to `main` only.
 - **Consecutive runs make no commit.** Both CLI and Action.
 - **Clean install.** `npm pack` → install the tarball into an empty directory → `actions-attic --help`, `--version`, `flake` and `build` all work. 32 files in the tarball, `lib/` + `dist/` + `bin/` + `action.yml`.
-- **Tests.** 59 tests, all passing: `npm test`.
+- **Tests.** 81 tests, all passing: `npm test`. A fresh `git clone` + `npm ci` + `npm test` was verified in an isolated directory.
 
 ## Bugs found by real data and fixed
 
@@ -40,6 +40,48 @@ Built 2026-08-28.
 4. A leaf window needing more pages than the whole budget could never complete. Added page-level resume (`startPage` / `onPage`).
 
 All four have regression tests.
+
+
+## Senior review pass (2026-08-28, after the first build)
+
+A full read-through plus an isolated test environment and adversarial edge-case probing found six
+more defects. All are fixed and all have regression tests; the suite went from 60 to 81 tests.
+
+1. **The Action committed nothing whenever it spent its budget — critical.** The commit itself needs
+   API requests, and the walk stopped exactly at the `max-requests` ceiling, so `finalize()` threw
+   before writing. Every night's work was discarded and the backfill could never converge on any
+   repository big enough to hit the ceiling, which is precisely what the tool is for. Invisible to
+   the CLI, whose file backend spends no requests. Fixed with `Api.withCheckpointBudget()`:
+   persisting data already fetched outranks the self-imposed ceiling, while the live rate limit
+   still applies. Proven live: `cli/cli`'s August, 4 nights at a 20-request budget, 4,015 runs,
+   matching `total_count` exactly. Before the fix that scenario committed zero.
+2. **Window checkpoints could run ahead of the data.** A window was recorded as captured when its
+   pages were *fetched*, not when they were *stored*. An interruption in between marked the window
+   done and lost those runs for good — measured at 150 runs silently missing while the month was
+   reported complete. Runs are now written window by window, and every checkpoint strictly follows a
+   successful write.
+3. **Queued check runs were silently dropped.** A check run that has not started has neither
+   `started_at` nor `completed_at`, so it had no month to be filed under and was discarded — and its
+   commit was then marked fetched, so it was never revisited. `add()` now takes the month of the run
+   that referenced it.
+4. **A commit re-read the whole archive.** Recounting on every `finalize()` cost one API request per
+   month per record type on the branch backend: 43 wasted requests a night on a 14-month archive,
+   growing without bound. The manifest now keeps a running total, `recount()` exists to repair or
+   verify, and `stats` always reports what is really on disk.
+5. **`repository` was advertised but broken.** It redirected the branch write as well as the read, so
+   archiving another repository 404'd on a repo the token cannot write to. The branch now always
+   lives in the repository running the workflow; `repository` only chooses whose history to read.
+6. **`backfill-complete` output was wrong** when the backfill had not started, because a null
+   frontier means both "finished" and "nothing done yet".
+
+House rules: a difflib pass over all 67 functions found `daysInMonth`/`monthToIndex` at 67%
+similarity (shared `parseMonth` extracted) and two CLI validators at 53% (shared `asUsage`
+extracted). No pair is now above 45%. Output wording was tightened for humans: correct plurals,
+thousands separators everywhere, paths shown relative to the working directory with forward slashes,
+and a `stats` table that flags any disagreement between the manifest and the files.
+
+Docs assets in `docs/` are rendered by `scripts/screenshots.mjs` from the verbatim captures in
+`docs/sessions/`; every line in them is real output from a live run.
 
 ## Not done, deliberately
 

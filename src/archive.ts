@@ -179,8 +179,13 @@ export class Archive {
       }
       manifest = { ...manifest, ...parsed, schemaVersion: SCHEMA_VERSION, repo: parsed.repo ?? repo };
       manifest.counts = { ...emptyManifest(repo).counts, ...(parsed.counts ?? {}) };
+      return new Archive(backend, manifest);
     }
-    return new Archive(backend, manifest);
+    // No manifest but record files present: someone deleted it, or this archive
+    // predates one. Rebuild the counts once so the running total starts right.
+    const archive = new Archive(backend, manifest);
+    if (archive.months().length > 0) archive.manifest.counts = await archive.recount();
+    return archive;
   }
 
   get backendName(): string {
@@ -216,13 +221,19 @@ export class Archive {
     return out;
   }
 
-  /** Merge records in, deduping by kind key. Returns how many were new. */
-  async add(kind: Kind, records: unknown[]): Promise<number> {
+  /**
+   * Merge records in, deduping by kind key. Returns how many were new.
+   *
+   * `fallbackMonth` catches records the API dates as null: a check run that is
+   * still queued has neither `started_at` nor `completed_at`, and dropping it
+   * would lose it for good, because its commit gets marked as fetched.
+   */
+  async add(kind: Kind, records: unknown[], fallbackMonth: Month): Promise<number> {
     if (records.length === 0) return 0;
     const byMonth = new Map<Month, unknown[]>();
     for (const record of records) {
-      const month = MONTH_OF[kind](record);
-      if (!/^\d{4}-\d{2}$/.test(month)) continue; // undated record: nothing sane to bucket it into
+      const dated = MONTH_OF[kind](record);
+      const month = /^\d{4}-\d{2}$/.test(dated) ? dated : fallbackMonth;
       const list = byMonth.get(month);
       if (list) list.push(record);
       else byMonth.set(month, [record]);
@@ -245,6 +256,7 @@ export class Archive {
       added += fresh.length;
       this.dirty = true;
     }
+    this.manifest.counts[kind] += added;
     return added;
   }
 
@@ -326,22 +338,29 @@ export class Archive {
    */
   async finalize(message: string, now: Date = new Date()): Promise<CommitResult | null> {
     if (this.dirty || !this.backend.paths().includes('manifest.json')) {
-      const months = this.months();
-      const counts = { runs: 0, checks: 0, statuses: 0 };
-      for (const month of months) {
-        counts.runs += (await this.read('runs', month)).length;
-        counts.checks += (await this.read('checks', month)).length;
-        counts.statuses += (await this.read('statuses', month)).length;
-      }
       this.manifest = {
         ...this.manifest,
         schemaVersion: SCHEMA_VERSION,
-        months,
-        counts,
+        months: this.months(),
         lastRun: now.toISOString(),
       };
       this.backend.write('manifest.json', `${JSON.stringify(this.manifest, null, 2)}\n`);
     }
     return this.backend.commit(message);
+  }
+
+  /**
+   * Count what is actually stored. Cheap on a directory, but one API request per
+   * month per kind on the branch backend, so normal operation keeps a running
+   * total in the manifest instead and only calls this to repair or verify.
+   */
+  async recount(): Promise<Manifest['counts']> {
+    const counts = { runs: 0, checks: 0, statuses: 0 };
+    for (const month of this.months()) {
+      for (const kind of ['runs', 'checks', 'statuses'] as const) {
+        counts[kind] += (await this.read(kind, month)).length;
+      }
+    }
+    return counts;
   }
 }

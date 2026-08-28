@@ -29,11 +29,14 @@ export function monthOf(iso: string): Month {
   return iso.slice(0, 7);
 }
 
-export function monthToIndex(m: Month): number {
+function parseMonth(m: Month): { year: number; month: number } {
   assertMonth(m);
-  const year = Number(m.slice(0, 4));
-  const mon = Number(m.slice(5, 7));
-  return year * 12 + (mon - 1);
+  return { year: Number(m.slice(0, 4)), month: Number(m.slice(5, 7)) };
+}
+
+export function monthToIndex(m: Month): number {
+  const { year, month } = parseMonth(m);
+  return year * 12 + (month - 1);
 }
 
 export function indexToMonth(index: number): Month {
@@ -48,10 +51,8 @@ export function shiftMonth(m: Month, delta: number): Month {
 }
 
 export function daysInMonth(m: Month): number {
-  assertMonth(m);
-  const year = Number(m.slice(0, 4));
-  const mon = Number(m.slice(5, 7));
-  return new Date(Date.UTC(year, mon, 0)).getUTCDate();
+  const { year, month } = parseMonth(m);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 export function monthWindow(m: Month): Window {

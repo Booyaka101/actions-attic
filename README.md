@@ -27,6 +27,10 @@ jobs:
 
 The first run creates the `actions-attic` branch and starts walking history backwards. If it runs out of request budget it commits what it has and resumes the next night. Once history is captured, each run takes seconds.
 
+![The Action's first run creates the branch and backfills; the next night finds nothing new](docs/action.png)
+
+![The job summary after each run](docs/job-summary.png)
+
 ## What it archives
 
 | Path | Contents |
@@ -59,79 +63,126 @@ The CLI writes to a directory instead of a branch, so you can archive from your 
 
 ### Real output
 
-Archiving two months of [`cli/cli`](https://github.com/cli/cli), a repository with several thousand runs a month, on a deliberately tiny 30-request budget so the resume path is exercised:
+Archiving two months of [`cli/cli`](https://github.com/cli/cli), a repository with several thousand
+runs a month, on a deliberately tiny 30-request budget so the resume path is exercised:
+
+![Three budget-limited runs backfilling cli/cli](docs/backfill.png)
+
+<details><summary>the same session as text</summary>
 
 ```
-$ npx actions-attic backfill cli/cli --archive attic --months 2 --max-requests 30 --no-checks --no-statuses
-backfilling 2026-08
+$ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
 2026-08-01..2026-08-31 hits the 1000-result cap; splitting
 2026-08-01..2026-08-15 hits the 1000-result cap; splitting
 2026-08-01..2026-08-07 hits the 1000-result cap; splitting
+2026-08-16..2026-08-31 hits the 1000-result cap; splitting
+2026-08-16..2026-08-23 hits the 1000-result cap; splitting
 stopping inside 2026-08; the next run resumes at the windows still outstanding
+max-requests ceiling reached after 30 requests; saving progress now
 attic: backfill 2026-08 in progress (2,612 runs)
-2 file(s) written to attic (2612 runs, 0 checks, 0 statuses new)
+wrote 2 files to ./attic (2,612 runs, 0 checks, 0 statuses new)
 30 API requests used
 checkpointed: reached the max-requests ceiling of 30
 
-$ npx actions-attic backfill cli/cli --archive attic --months 2 --max-requests 30 --no-checks --no-statuses
+$ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
+2026-07-01..2026-07-31 hits the 1000-result cap; splitting
+2026-07-01..2026-07-15 hits the 1000-result cap; splitting
+stopping inside 2026-07; the next run resumes at the windows still outstanding
+max-requests ceiling reached after 30 requests; saving progress now
 attic: backfill 2026-08 (2,435 runs)
+wrote 3 files to ./attic (2,435 runs, 0 checks, 0 statuses new)
 30 API requests used
 backfill frontier at 2026-08-01; run again to continue
+checkpointed: reached the max-requests ceiling of 30
 
-$ npx actions-attic backfill cli/cli --archive attic --months 2 --max-requests 30 --no-checks --no-statuses
+$ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
+2026-07-16..2026-07-31 hits the 1000-result cap; splitting
 attic: backfill 2026-07 (2,101 runs)
+wrote 2 files to ./attic (2,101 runs, 0 checks, 0 statuses new)
 25 API requests used
 backfill complete
-```
 
-85 requests, 7,148 runs, no duplicates. The archived counts match what the API reports for the same windows exactly: 3,133 for July and 4,015 for August.
-
-```
-$ npx actions-attic flake "Unit and Integration Tests" --since 2026-07 --until 2026-07 --archive attic
+$ npx actions-attic flake "Unit and Integration Tests" --since 2026-07 --until 2026-07 --archive ./attic
 Unit and Integration Tests: 272 runs, 266 success, 6 failure, flake rate 2.2% (peak 2026-07 at 2.2%)
 ```
 
-Checked against the live API for the same window: `status=success` reports 266, `status=failure` reports 6.
+</details>
+
+85 requests, 7,148 runs, no duplicates. The archived counts match what the API reports for the same
+windows exactly: 3,133 for July and 4,015 for August. The `flake` line is checked against the live
+API for the same window too, where `status=success` reports 266 and `status=failure` reports 6.
+
+`flake` counts only runs that concluded `success` or `failure`; cancelled, skipped and still-running
+runs are not flake signal. The peak is the worst month by failure rate.
+
+Archiving a small repository end to end, then reading it back:
+
+![Archive, index and read](docs/cli.png)
+
+<details><summary>the same session as text</summary>
 
 ```
-$ npx actions-attic stats --archive attic
-repo             cli/cli
-archive          /work/attic
-months           2026-07..2026-08 (2)
-runs             7,148
-checks           0
-statuses         0
-highest run id   33125555902
-backfill         complete
-last change      2026-08-28T01:11:00.124Z
+$ npx actions-attic sync Booyaka101/rimpatch --archive ./attic --months 14
+2026-08: fetching checks/statuses for 7 new commits
+attic: backfill 2025-07..2026-08 (14 runs)
+wrote 4 files to ./attic (14 runs, 112 checks, 0 statuses new)
+28 API requests used
+backfill complete
+
+$ npx actions-attic sync Booyaka101/rimpatch --archive ./attic --months 14
+incremental: scanning for new runs
+no change; the archive at ./attic is already up to date
+1 API request used
+backfill complete
+
+$ npx actions-attic stats --archive ./attic
+  repository       Booyaka101/rimpatch
+  archive          ./attic
+  months           2026-08 .. 2026-08  (1)
+  runs             14
+  checks           112
+  statuses         0
+  highest run id   32730596571
+  backfill         complete
+  last change      2026-08-28T02:05:56.958Z
+  schema           v1
+
+$ npx actions-attic build --archive ./attic
+indexed 14 runs, 112 checks, 0 statuses across 1 month into ./attic/attic.db
+
+$ npx actions-attic flake CI --archive ./attic
+CI: 7 runs, 7 success, 0 failure, flake rate 0.0%
 ```
 
-`flake` counts only runs that concluded `success` or `failure`; cancelled, skipped and still-running runs are not flake signal. The peak is the worst month by failure rate.
+</details>
 
-Checks and statuses come from the same walk. One month of [`numpy/numpy`](https://github.com/numpy/numpy), which still uses CircleCI commit statuses alongside Actions checks:
+Checks and statuses come from the same walk. One month of
+[`numpy/numpy`](https://github.com/numpy/numpy), which still uses CircleCI commit statuses alongside
+Actions checks:
 
 ```
-$ npx actions-attic backfill numpy/numpy --archive attic-numpy --months 1 --max-requests 400
+$ npx actions-attic backfill numpy/numpy --archive ./attic-numpy --months 1 --max-requests 400
 2026-08: fetching checks/statuses for 680 new commits
 stopping inside 2026-08; the next run resumes at the windows still outstanding
+max-requests ceiling reached after 400 requests; saving progress now
 attic: backfill 2026-08 in progress (10,829 runs)
-7 file(s) written to attic-numpy (10829 runs, 6981 checks, 969 statuses new)
+wrote 7 files to ./attic-numpy (10,829 runs, 6,981 checks, 969 statuses new)
 400 API requests used
 checkpointed: reached the max-requests ceiling of 400
 
 $ head -1 attic-numpy/statuses/2026-08.jsonl
-{"id":51478479295,"head_sha":"996fb96...","state":"pending","context":"ci/circleci: build",
- "description":"CircleCI is running your tests","target_url":"https://circleci.com/gh/numpy/numpy/57451",
- "created_at":"2026-08-01T10:32:14Z","updated_at":"2026-08-01T10:32:14Z"}
+{"id":51478479295,"head_sha":"996fb9685d12daeb3381003ebfcc1d742555e1bd","state":"pending","context":"ci/circleci: build","description":"CircleCI is running your tests","target_url":"https://circleci.com/gh/numpy/numpy/57451","created_at":"2026-08-01T10:32:14Z","updated_at":"2026-08-01T10:32:14Z"}
 
-$ npx actions-attic build --archive attic-numpy
-indexed 10829 runs, 6981 checks, 969 statuses across 2 month(s) into attic-numpy/attic.db
+$ npx actions-attic build --archive ./attic-numpy
+indexed 10,829 runs, 6,981 checks, 969 statuses across 2 months into ./attic-numpy/attic.db
 
-$ npx actions-attic flake "Linux tests" --archive attic-numpy
+$ npx actions-attic flake "Linux tests" --archive ./attic-numpy
 Linux tests: 460 runs, 418 success, 42 failure, flake rate 9.1% (peak 2026-08 at 9.1%)
 ```
 
-That run stopped on its request ceiling with the month's checks half done. The next invocation picks up at the commits still outstanding rather than starting over.
+That run stopped on its request ceiling with the month's checks half done. The next invocation picks
+up at the commits still outstanding rather than starting over, and the SQLite row counts match the
+JSONL line counts exactly.
 
 ## Configuration
 
@@ -143,7 +194,7 @@ That run stopped on its request ceiling with the month's checks half done. The n
 | `backfill-months` | `14` | How far back to walk |
 | `max-requests` | `800` | `GITHUB_TOKEN` gets 1,000 requests/hour/repository, so 800 leaves headroom |
 | `max-pages` | `50` | Page ceiling for an incremental catch-up |
-| `repository` | current repo | Archive a different repository |
+| `repository` | current repo | Read another repository's history. The branch is always written to the repo running the workflow, which is the only one `github.token` can write to. |
 | `skip-checks` / `skip-statuses` | `false` | Runs-only archiving, much cheaper |
 
 Outputs: `runs-added`, `checks-added`, `statuses-added`, `committed`, `commit-sha`, `backfill-frontier`, `backfill-complete`, `requests-used`, `branch`.
@@ -188,6 +239,9 @@ The JSONL is plain text, so `grep`, `jq` and `git log` work on it directly. That
 - Statuses need pull access. If the token cannot read them the run warns once and carries on with runs and checks.
 - The backfill only reaches as far back as GitHub still has data. Run it **before** 1 October 2026 and you keep what would otherwise be deleted; run it after and you get whatever survived your retention setting.
 - Data added to the archive is never removed by this tool. Deleting the branch deletes the archive.
+- One writer at a time. Two jobs committing the same archive branch race on the ref; the loser
+  reloads and retries once, then fails loudly. Keep the `concurrency:` block from
+  [`examples/attic.yml`](examples/attic.yml) if you also trigger the workflow by hand.
 
 ## Requirements
 
@@ -202,6 +256,11 @@ npm run build     # tsc -> lib/, esbuild -> dist/index.cjs
 ```
 
 Fixtures under `test/fixtures/` are test-only and are regenerated with `node test/fixtures/generate.mjs`.
+
+The screenshots in `docs/` are rendered from the verbatim session captures in `docs/sessions/`:
+`node scripts/screenshots.mjs`, against a Chrome started with `--remote-debugging-port=9222`.
+Nothing in those captures is edited by hand; to refresh them, re-run the commands shown at the
+top of each file.
 
 ## First distribution step
 

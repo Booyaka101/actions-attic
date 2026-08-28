@@ -3,7 +3,7 @@
  * and then spends whatever request budget is left continuing the backfill.
  */
 
-import { Api } from './api.js';
+import { Api, BudgetExhausted } from './api.js';
 import { Archive } from './archive.js';
 import type { Backend, CommitResult } from './backend.js';
 import { type BackfillResult, backfill, backfillMessage } from './backfill.js';
@@ -69,26 +69,38 @@ export async function runArchive(opts: RunOptions): Promise<RunSummary> {
   const wantIncremental = opts.mode === 'incremental' || (opts.mode === 'auto' && !firstEver);
   const wantBackfill = opts.mode === 'backfill' || (opts.mode === 'auto' && (firstEver || !backfillDone));
 
-  if (wantIncremental) {
-    log('incremental: scanning for new runs');
-    inc = await incremental(ctx, { maxPages: opts.maxPages });
-  }
-  if (wantBackfill && !opts.api.budgetExhausted()) {
-    back = await backfill(ctx, { months: opts.months, now: opts.now });
-  } else if (wantBackfill) {
-    log('skipping backfill: no request budget left this run');
+  // Whatever happens in here, the archive still gets committed below. Losing a
+  // night's captured runs to an exception is worse than any partial state.
+  let interrupted: string | null = null;
+  try {
+    if (wantIncremental) {
+      log('incremental: scanning for new runs');
+      inc = await incremental(ctx, { maxPages: opts.maxPages });
+    }
+    if (wantBackfill && !opts.api.budgetExhausted()) {
+      back = await backfill(ctx, { months: opts.months, now: opts.now });
+    } else if (wantBackfill) {
+      log('skipping backfill: no request budget left this run');
+    }
+  } catch (err) {
+    if (!(err instanceof BudgetExhausted)) throw err;
+    interrupted = err.reason;
+    log(`stopped early: ${err.reason}`);
   }
 
   const message =
     [back ? backfillMessage(back) : null, inc ? incrementalMessage(inc) : null].filter(Boolean).join(', ') ||
     (archive.changed ? 'attic: update manifest' : null);
 
+  // Saving progress has to outrank the request ceiling, or a run that spends
+  // its whole budget walking history throws that work away and never advances.
+  opts.api.beginCheckpoint();
   const commit = archive.changed || message ? await archive.finalize(message ?? 'attic: update', opts.now) : null;
 
   const runs = (back?.added.runs ?? 0) + (inc?.added.runs ?? 0);
   const checks = (back?.added.checks ?? 0) + (inc?.added.checks ?? 0);
   const statuses = (back?.added.statuses ?? 0) + (inc?.added.statuses ?? 0);
-  const checkpoint = back?.stoppedBecause ?? inc?.stoppedBecause ?? null;
+  const checkpoint = back?.stoppedBecause ?? inc?.stoppedBecause ?? interrupted;
 
   return {
     mode: opts.mode,

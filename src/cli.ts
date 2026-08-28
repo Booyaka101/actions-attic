@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
 import { Archive, type RunRecord } from './archive.js';
 import { FsBackend } from './backend.js';
@@ -124,8 +124,13 @@ function month(args: Args, name: string): string | undefined {
   const value = args.flags.get(name);
   if (value === undefined) return undefined;
   if (typeof value !== 'string') throw new UsageError(`--${name} needs a value like 2026-04`);
+  return asUsage(() => assertMonth(value, `--${name}`));
+}
+
+/** Validation errors from the library are user mistakes at the CLI boundary. */
+function asUsage<T>(fn: () => T): T {
   try {
-    return assertMonth(value, `--${name}`);
+    return fn();
   } catch (err) {
     throw new UsageError((err as Error).message);
   }
@@ -163,19 +168,15 @@ function resolveToken(args: Args): string {
 function requireRepo(args: Args): { owner: string; repo: string } {
   const value = args.positional[0];
   if (!value) throw new UsageError(`${args.command} needs a repository, e.g. \`actions-attic ${args.command} cli/cli\``);
-  try {
-    return parseRepo(value);
-  } catch (err) {
-    throw new UsageError((err as Error).message);
-  }
+  return asUsage(() => parseRepo(value));
 }
 
 async function openArchive(dir: string, repo = 'unknown/unknown'): Promise<{ archive: Archive; dir: string }> {
   const backend = await FsBackend.open(dir);
   if (backend.paths().length === 0) {
     throw new UsageError(
-      `no archive found in ${dir}. Run \`actions-attic sync <owner/repo> --archive ${dir}\` first, ` +
-        'or point --archive at a checkout of your actions-attic branch.',
+      `no archive found in ${display(dir)}. Run \`actions-attic sync <owner/repo> --archive ${display(dir)}\` ` +
+        'first, or point --archive at a checkout of your actions-attic branch.',
     );
   }
   return { archive: await Archive.open(backend, repo), dir };
@@ -211,20 +212,38 @@ async function cmdSync(args: Args, mode: Mode): Promise<number> {
     return 0;
   }
 
-  const counts = `${summary.runs} runs, ${summary.checks} checks, ${summary.statuses} statuses`;
+  const where = display(dir);
+  const counts = [
+    plural(summary.runs, 'run'),
+    plural(summary.checks, 'check'),
+    plural(summary.statuses, 'status', 'statuses'),
+  ].join(', ');
   process.stdout.write(
     summary.commit
-      ? `${summary.message}\n${summary.commit.changed.length} file(s) written to ${dir} (${counts} new)\n`
-      : `no change (${counts} new); archive at ${dir} is already up to date\n`,
+      ? `${summary.message}\nwrote ${plural(summary.commit.changed.length, 'file')} to ${where} (${counts} new)\n`
+      : `no change; the archive at ${where} is already up to date\n`,
   );
-  process.stdout.write(`${summary.requests} API requests used\n`);
-  if (summary.frontier) {
-    process.stdout.write(`backfill frontier at ${summary.frontier}; run again to continue\n`);
-  } else if (summary.backfill?.finished) {
+  process.stdout.write(`${plural(summary.requests, 'API request')} used\n`);
+  if (summary.archive.manifest.backfillComplete) {
     process.stdout.write('backfill complete\n');
+  } else if (summary.frontier) {
+    process.stdout.write(`backfill frontier at ${summary.frontier}; run again to continue\n`);
   }
   if (summary.checkpoint) process.stdout.write(`checkpointed: ${summary.checkpoint}\n`);
   return 0;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
+
+/**
+ * Show a path relative to the working directory when it sits underneath it.
+ * Always with forward slashes: this is a label, and it reads the same on every
+ * platform next to the `./attic` the user typed.
+ */
+function display(dir: string): string {
+  const rel = relative(process.cwd(), dir);
+  const inside = rel && !rel.startsWith('..') && !isAbsolute(rel);
+  return (inside ? `./${rel}` : dir).split(sep).join('/');
 }
 
 function jsonSummary(summary: Awaited<ReturnType<typeof runArchive>>, dir: string) {
@@ -253,8 +272,9 @@ async function cmdBuild(args: Args): Promise<number> {
     return 0;
   }
   process.stdout.write(
-    `indexed ${result.runs} runs, ${result.checks} checks, ${result.statuses} statuses ` +
-      `across ${result.months.length} month(s) into ${out}\n`,
+    `indexed ${plural(result.runs, 'run')}, ${plural(result.checks, 'check')}, ` +
+      `${plural(result.statuses, 'status', 'statuses')} across ${plural(result.months.length, 'month')} ` +
+      `into ${display(out)}\n`,
   );
   return 0;
 }
@@ -313,26 +333,45 @@ async function cmdStats(args: Args): Promise<number> {
   const dir = resolve(str(args, 'archive', 'attic'));
   const { archive } = await openArchive(dir);
   const m = archive.manifest;
+  // Reading a directory is free, so always report what is really on disk rather
+  // than trusting the manifest's running total.
+  const actual = await archive.recount();
+
   if (args.flags.get('json') === true) {
-    process.stdout.write(`${JSON.stringify(m, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...m, archive: dir, actualCounts: actual }, null, 2)}\n`);
     return 0;
   }
-  const months = m.months.length ? `${m.months[0]}..${m.months[m.months.length - 1]}` : 'none';
-  process.stdout.write(
-    [
-      `repo             ${m.repo}`,
-      `archive          ${dir}`,
-      `months           ${months} (${m.months.length})`,
-      `runs             ${m.counts.runs.toLocaleString('en-US')}`,
-      `checks           ${m.counts.checks.toLocaleString('en-US')}`,
-      `statuses         ${m.counts.statuses.toLocaleString('en-US')}`,
-      `highest run id   ${m.highestRunId ?? '-'}`,
-      `backfill         ${m.backfillComplete ? 'complete' : m.backfillFrontier ? `resuming before ${m.backfillFrontier}` : 'not started'}`,
-      `last change      ${m.lastRun ?? '-'}`,
-      '',
-    ].join('\n'),
-  );
+
+  const backfill = m.backfillComplete
+    ? 'complete'
+    : m.backfillFrontier
+      ? `resuming before ${m.backfillFrontier}`
+      : 'not started';
+  const rows: [string, string][] = [
+    ['repository', m.repo],
+    ['archive', display(dir)],
+    ['months', m.months.length ? `${m.months[0]} .. ${m.months[m.months.length - 1]}  (${m.months.length})` : 'none'],
+    ['runs', count(actual.runs, m.counts.runs)],
+    ['checks', count(actual.checks, m.counts.checks)],
+    ['statuses', count(actual.statuses, m.counts.statuses)],
+    ['highest run id', m.highestRunId === null ? '-' : String(m.highestRunId)],
+    ['backfill', backfill],
+    ['last change', m.lastRun ?? '-'],
+    ['schema', `v${m.schemaVersion}`],
+  ];
+  process.stdout.write(`${table(rows)}\n`);
   return 0;
+}
+
+function count(actual: number, claimed: number): string {
+  const n = actual.toLocaleString('en-US');
+  return actual === claimed ? n : `${n}  (manifest says ${claimed.toLocaleString('en-US')}; run sync to reconcile)`;
+}
+
+/** Two aligned columns. Keeps `stats` readable when a value is long. */
+function table(rows: [string, string][]): string {
+  const width = Math.max(...rows.map(([label]) => label.length));
+  return rows.map(([label, value]) => `  ${label.padEnd(width)}   ${value}`).join('\n');
 }
 
 async function cmdRuns(args: Args): Promise<number> {

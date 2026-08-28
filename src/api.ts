@@ -107,6 +107,7 @@ export class Api {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly fetchImpl: typeof fetch;
   private exhaustedReason: string | null = null;
+  private checkpointing = false;
 
   constructor(opts: ApiOptions) {
     if (!opts.token) throw new Error('a GitHub token is required');
@@ -128,9 +129,37 @@ export class Api {
     return this.exhaustReason() !== null;
   }
 
+  /**
+   * Persisting data we have already fetched outranks the self-imposed
+   * max-requests ceiling. Without that, a run which spends its whole budget
+   * walking history cannot write the result down: the work is thrown away and
+   * the next run repeats it forever. The live rate limit still applies, so this
+   * can only overshoot the ceiling, never the limit GitHub enforces.
+   */
+  async withCheckpointBudget<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = this.checkpointing;
+    this.checkpointing = true;
+    try {
+      return await fn();
+    } finally {
+      this.checkpointing = previous;
+    }
+  }
+
+  /** Lift the ceiling for the rest of the run, to commit what was captured. */
+  beginCheckpoint(): void {
+    if (this.checkpointing) return;
+    this.checkpointing = true;
+    if (this.requests >= this.maxRequests) {
+      this.log(`max-requests ceiling reached after ${this.requests} requests; saving progress now`);
+    }
+  }
+
   exhaustReason(): string | null {
     if (this.exhaustedReason) return this.exhaustedReason;
-    if (this.requests >= this.maxRequests) return `reached the max-requests ceiling of ${this.maxRequests}`;
+    if (!this.checkpointing && this.requests >= this.maxRequests) {
+      return `reached the max-requests ceiling of ${this.maxRequests}`;
+    }
     if (this.rateRemaining !== null && this.rateRemaining <= this.reserve) {
       const at = this.rateReset ? new Date(this.rateReset * 1000).toISOString() : 'unknown';
       return `only ${this.rateRemaining} API requests left before the limit resets at ${at}`;

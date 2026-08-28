@@ -19392,6 +19392,7 @@ var Api = class {
   sleep;
   fetchImpl;
   exhaustedReason = null;
+  checkpointing = false;
   constructor(opts) {
     if (!opts.token) throw new Error("a GitHub token is required");
     if (!Number.isInteger(opts.maxRequests) || opts.maxRequests < 1) {
@@ -19412,9 +19413,35 @@ var Api = class {
   budgetExhausted() {
     return this.exhaustReason() !== null;
   }
+  /**
+   * Persisting data we have already fetched outranks the self-imposed
+   * max-requests ceiling. Without that, a run which spends its whole budget
+   * walking history cannot write the result down: the work is thrown away and
+   * the next run repeats it forever. The live rate limit still applies, so this
+   * can only overshoot the ceiling, never the limit GitHub enforces.
+   */
+  async withCheckpointBudget(fn) {
+    const previous = this.checkpointing;
+    this.checkpointing = true;
+    try {
+      return await fn();
+    } finally {
+      this.checkpointing = previous;
+    }
+  }
+  /** Lift the ceiling for the rest of the run, to commit what was captured. */
+  beginCheckpoint() {
+    if (this.checkpointing) return;
+    this.checkpointing = true;
+    if (this.requests >= this.maxRequests) {
+      this.log(`max-requests ceiling reached after ${this.requests} requests; saving progress now`);
+    }
+  }
   exhaustReason() {
     if (this.exhaustedReason) return this.exhaustedReason;
-    if (this.requests >= this.maxRequests) return `reached the max-requests ceiling of ${this.maxRequests}`;
+    if (!this.checkpointing && this.requests >= this.maxRequests) {
+      return `reached the max-requests ceiling of ${this.maxRequests}`;
+    }
     if (this.rateRemaining !== null && this.rateRemaining <= this.reserve) {
       const at = this.rateReset ? new Date(this.rateReset * 1e3).toISOString() : "unknown";
       return `only ${this.rateRemaining} API requests left before the limit resets at ${at}`;
@@ -19736,11 +19763,13 @@ function assertDate(value, what = "date") {
 function monthOf(iso) {
   return iso.slice(0, 7);
 }
-function monthToIndex(m) {
+function parseMonth(m) {
   assertMonth(m);
-  const year = Number(m.slice(0, 4));
-  const mon = Number(m.slice(5, 7));
-  return year * 12 + (mon - 1);
+  return { year: Number(m.slice(0, 4)), month: Number(m.slice(5, 7)) };
+}
+function monthToIndex(m) {
+  const { year, month } = parseMonth(m);
+  return year * 12 + (month - 1);
 }
 function indexToMonth(index) {
   const year = Math.floor(index / 12);
@@ -19751,10 +19780,8 @@ function shiftMonth(m, delta) {
   return indexToMonth(monthToIndex(m) + delta);
 }
 function daysInMonth(m) {
-  assertMonth(m);
-  const year = Number(m.slice(0, 4));
-  const mon = Number(m.slice(5, 7));
-  return new Date(Date.UTC(year, mon, 0)).getUTCDate();
+  const { year, month } = parseMonth(m);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 function monthWindow(m) {
   return { start: `${m}-01`, end: `${m}-${String(daysInMonth(m)).padStart(2, "0")}` };
@@ -19883,8 +19910,11 @@ var Archive = class _Archive {
       }
       manifest = { ...manifest, ...parsed, schemaVersion: SCHEMA_VERSION, repo: parsed.repo ?? repo };
       manifest.counts = { ...emptyManifest(repo).counts, ...parsed.counts ?? {} };
+      return new _Archive(backend, manifest);
     }
-    return new _Archive(backend, manifest);
+    const archive = new _Archive(backend, manifest);
+    if (archive.months().length > 0) archive.manifest.counts = await archive.recount();
+    return archive;
   }
   get backendName() {
     return this.backend.describe();
@@ -19914,13 +19944,19 @@ var Archive = class _Archive {
     for (const month of months ?? this.months()) out.push(...await this.read(kind, month));
     return out;
   }
-  /** Merge records in, deduping by kind key. Returns how many were new. */
-  async add(kind, records) {
+  /**
+   * Merge records in, deduping by kind key. Returns how many were new.
+   *
+   * `fallbackMonth` catches records the API dates as null: a check run that is
+   * still queued has neither `started_at` nor `completed_at`, and dropping it
+   * would lose it for good, because its commit gets marked as fetched.
+   */
+  async add(kind, records, fallbackMonth) {
     if (records.length === 0) return 0;
     const byMonth = /* @__PURE__ */ new Map();
     for (const record of records) {
-      const month = MONTH_OF[kind](record);
-      if (!/^\d{4}-\d{2}$/.test(month)) continue;
+      const dated = MONTH_OF[kind](record);
+      const month = /^\d{4}-\d{2}$/.test(dated) ? dated : fallbackMonth;
       const list = byMonth.get(month);
       if (list) list.push(record);
       else byMonth.set(month, [record]);
@@ -19942,6 +19978,7 @@ var Archive = class _Archive {
       added += fresh.length;
       this.dirty = true;
     }
+    this.manifest.counts[kind] += added;
     return added;
   }
   /** Dedupe keys already stored for a month, cached per read. */
@@ -20015,24 +20052,30 @@ var Archive = class _Archive {
    */
   async finalize(message, now = /* @__PURE__ */ new Date()) {
     if (this.dirty || !this.backend.paths().includes("manifest.json")) {
-      const months = this.months();
-      const counts = { runs: 0, checks: 0, statuses: 0 };
-      for (const month of months) {
-        counts.runs += (await this.read("runs", month)).length;
-        counts.checks += (await this.read("checks", month)).length;
-        counts.statuses += (await this.read("statuses", month)).length;
-      }
       this.manifest = {
         ...this.manifest,
         schemaVersion: SCHEMA_VERSION,
-        months,
-        counts,
+        months: this.months(),
         lastRun: now.toISOString()
       };
       this.backend.write("manifest.json", `${JSON.stringify(this.manifest, null, 2)}
 `);
     }
     return this.backend.commit(message);
+  }
+  /**
+   * Count what is actually stored. Cheap on a directory, but one API request per
+   * month per kind on the branch backend, so normal operation keeps a running
+   * total in the manifest instead and only calls this to repair or verify.
+   */
+  async recount() {
+    const counts = { runs: 0, checks: 0, statuses: 0 };
+    for (const month of this.months()) {
+      for (const kind of ["runs", "checks", "statuses"]) {
+        counts[kind] += (await this.read(kind, month)).length;
+      }
+    }
+    return counts;
   }
 };
 
@@ -20085,49 +20128,32 @@ function toStatusRecord(raw, headSha) {
     updated_at: raw.updated_at ?? null
   };
 }
-async function captureWindow(ctx, window, progress = /* @__PURE__ */ new Set()) {
+async function captureWindow(ctx, window, opts = {}) {
   const runs = [];
+  const progress = opts.progress ?? /* @__PURE__ */ new Set();
+  const store = opts.store ?? (async (batch) => {
+    runs.push(...batch);
+  });
   const windows = [];
   let complete = true;
   try {
-    await walkWindow(ctx, window, runs, windows, progress);
+    await walkWindow(ctx, window, store, windows, progress);
   } catch (err) {
     if (!(err instanceof BudgetExhausted)) throw err;
     complete = false;
   }
   return { runs, windows, complete, progress };
 }
-async function walkWindow(ctx, window, out, windows, progress) {
+async function walkWindow(ctx, window, store, windows, progress) {
   const key = formatWindow(window);
   if (progress.has(key)) return;
   if (!progress.has(`${key}:split`)) {
-    const raw = [];
-    let capped = false;
-    const startPage = pagesDone(progress, key) + 1;
-    try {
-      const res = await ctx.api.list(
-        `/repos/${ctx.owner}/${ctx.repo}/actions/runs`,
-        { created: key },
-        {
-          key: "workflow_runs",
-          sink: raw,
-          startPage,
-          onPage: (page) => setPagesDone(progress, key, page),
-          onFirstPage: (total) => {
-            if (total < SEARCH_CAP) return true;
-            capped = true;
-            return false;
-          }
-        }
-      );
-      if (!capped && !res.complete) {
+    const { capped, complete } = await drain(ctx, key, store, progress);
+    if (!capped) {
+      if (!complete) {
         ctx.warn(`stopped paginating ${key} early; it will resume on the next run`);
         throw new BudgetExhausted("page cap reached while walking a window");
       }
-    } finally {
-      for (const item of raw) out.push(toRunRecord(item));
-    }
-    if (!capped) {
       clearPagesDone(progress, key);
       windows.push(key);
       progress.add(key);
@@ -20142,22 +20168,52 @@ async function walkWindow(ctx, window, out, windows, progress) {
     ctx.warn(
       `${key} has at least ${SEARCH_CAP} runs in a single day; GitHub will not return more than ${SEARCH_CAP} for one search, so that day is capped`
     );
-    const raw = [];
-    await ctx.api.list(
-      `/repos/${ctx.owner}/${ctx.repo}/actions/runs`,
-      { created: key },
-      { key: "workflow_runs", sink: raw, maxPages: SEARCH_CAP / 100 }
-    );
-    for (const item of raw) out.push(toRunRecord(item));
+    await drain(ctx, key, store, progress, SEARCH_CAP / 100);
+    clearPagesDone(progress, key);
     windows.push(key);
     progress.add(key);
     return;
   }
-  for (const half of halves) await walkWindow(ctx, half, out, windows, progress);
+  for (const half of halves) await walkWindow(ctx, half, store, windows, progress);
   progress.add(key);
 }
-async function captureMonth(ctx, month, progress) {
-  return captureWindow(ctx, monthWindow(month), progress);
+async function drain(ctx, key, store, progress, maxPages) {
+  const raw = [];
+  let capped = false;
+  let lastPage = pagesDone(progress, key);
+  let complete = false;
+  let failure = null;
+  try {
+    const res = await ctx.api.list(
+      `/repos/${ctx.owner}/${ctx.repo}/actions/runs`,
+      { created: key },
+      {
+        key: "workflow_runs",
+        sink: raw,
+        maxPages,
+        startPage: lastPage + 1,
+        onPage: (page) => {
+          lastPage = page;
+        },
+        onFirstPage: (total) => {
+          if (total < SEARCH_CAP || maxPages !== void 0) return true;
+          capped = true;
+          return false;
+        }
+      }
+    );
+    complete = res.complete;
+  } catch (err) {
+    if (!(err instanceof BudgetExhausted)) throw err;
+    failure = err;
+  }
+  await store(raw.map(toRunRecord));
+  setPagesDone(progress, key, lastPage);
+  if (failure) throw failure;
+  return { capped, complete };
+}
+async function captureMonth(ctx, month, opts = {}) {
+  return captureWindow(ctx, monthWindow(month), opts);
 }
 function pagesDone(progress, key) {
   for (const entry of progress) {
@@ -20211,26 +20267,47 @@ async function captureShas(ctx, shas) {
   }
   return { checks, statuses, done, complete: true };
 }
+async function storeRuns(ctx, month, runs) {
+  return ctx.api.withCheckpointBudget(async () => {
+    const added = await ctx.archive.add("runs", runs, month);
+    for (const run2 of runs) ctx.archive.noteRunId(run2.id);
+    return added;
+  });
+}
+async function storeShas(ctx, month, added) {
+  if (ctx.skipChecks && ctx.skipStatuses) return { complete: true };
+  try {
+    const known = await ctx.archive.shasDone(month);
+    const pending = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const run2 of await ctx.archive.read("runs", month)) {
+      if (!run2.head_sha || known.has(run2.head_sha) || seen.has(run2.head_sha)) continue;
+      seen.add(run2.head_sha);
+      pending.push(run2.head_sha);
+    }
+    if (pending.length === 0) return { complete: true };
+    ctx.log(`${month}: fetching checks/statuses for ${pending.length} new commit${pending.length === 1 ? "" : "s"}`);
+    const res = await captureShas(ctx, pending);
+    await ctx.api.withCheckpointBudget(async () => {
+      added.checks += await ctx.archive.add("checks", res.checks, month);
+      added.statuses += await ctx.archive.add("statuses", res.statuses, month);
+      await ctx.archive.markShasDone(month, res.done);
+    });
+    return { complete: res.complete };
+  } catch (err) {
+    if (!(err instanceof BudgetExhausted)) throw err;
+    return { complete: false };
+  }
+}
 async function storeMonth(ctx, month, runs) {
   const added = { runs: 0, checks: 0, statuses: 0 };
-  added.runs = await ctx.archive.add("runs", runs);
-  for (const run2 of runs) ctx.archive.noteRunId(run2.id);
-  if (ctx.skipChecks && ctx.skipStatuses) return { added, complete: true };
-  const known = await ctx.archive.shasDone(month);
-  const pending = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const run2 of await ctx.archive.read("runs", month)) {
-    if (!run2.head_sha || known.has(run2.head_sha) || seen.has(run2.head_sha)) continue;
-    seen.add(run2.head_sha);
-    pending.push(run2.head_sha);
+  try {
+    added.runs = await storeRuns(ctx, month, runs);
+    return { added, complete: (await storeShas(ctx, month, added)).complete };
+  } catch (err) {
+    if (!(err instanceof BudgetExhausted)) throw err;
+    return { added, complete: false };
   }
-  if (pending.length === 0) return { added, complete: true };
-  ctx.log(`${month}: fetching checks/statuses for ${pending.length} new commit${pending.length === 1 ? "" : "s"}`);
-  const res = await captureShas(ctx, pending);
-  added.checks = await ctx.archive.add("checks", res.checks);
-  added.statuses = await ctx.archive.add("statuses", res.statuses);
-  await ctx.archive.markShasDone(month, res.done);
-  return { added, complete: res.complete };
 }
 function addResults(a, b) {
   return { runs: a.runs + b.runs, checks: a.checks + b.checks, statuses: a.statuses + b.statuses };
@@ -20277,12 +20354,19 @@ async function backfill(ctx, opts) {
     }
     ctx.log(`backfilling ${month}`);
     monthsTouched.push(month);
-    const captured = await captureMonth(ctx, month, ctx.archive.partialWindows(month));
+    const progress = ctx.archive.partialWindows(month);
+    const monthly = { runs: 0, checks: 0, statuses: 0 };
+    const captured = await captureMonth(ctx, month, {
+      progress,
+      store: async (batch) => {
+        monthly.runs += await storeRuns(ctx, month, batch);
+      }
+    });
+    const stored = captured.complete ? await storeShas(ctx, month, monthly) : { complete: false };
     windows.push(...captured.windows);
-    const stored = await storeMonth(ctx, month, captured.runs);
-    added = addResults(added, stored.added);
+    added = addResults(added, monthly);
     if (!captured.complete || !stored.complete) {
-      ctx.archive.setPartialWindows(month, captured.progress);
+      ctx.archive.setPartialWindows(month, progress);
       stoppedBecause = ctx.api.exhaustReason() ?? "request budget exhausted mid-month";
       ctx.log(`stopping inside ${month}; the next run resumes at the windows still outstanding`);
       break;
@@ -20406,21 +20490,29 @@ async function runArchive(opts) {
   let back = null;
   const wantIncremental = opts.mode === "incremental" || opts.mode === "auto" && !firstEver;
   const wantBackfill = opts.mode === "backfill" || opts.mode === "auto" && (firstEver || !backfillDone);
-  if (wantIncremental) {
-    log("incremental: scanning for new runs");
-    inc = await incremental(ctx, { maxPages: opts.maxPages });
-  }
-  if (wantBackfill && !opts.api.budgetExhausted()) {
-    back = await backfill(ctx, { months: opts.months, now: opts.now });
-  } else if (wantBackfill) {
-    log("skipping backfill: no request budget left this run");
+  let interrupted = null;
+  try {
+    if (wantIncremental) {
+      log("incremental: scanning for new runs");
+      inc = await incremental(ctx, { maxPages: opts.maxPages });
+    }
+    if (wantBackfill && !opts.api.budgetExhausted()) {
+      back = await backfill(ctx, { months: opts.months, now: opts.now });
+    } else if (wantBackfill) {
+      log("skipping backfill: no request budget left this run");
+    }
+  } catch (err) {
+    if (!(err instanceof BudgetExhausted)) throw err;
+    interrupted = err.reason;
+    log(`stopped early: ${err.reason}`);
   }
   const message = [back ? backfillMessage(back) : null, inc ? incrementalMessage(inc) : null].filter(Boolean).join(", ") || (archive.changed ? "attic: update manifest" : null);
+  opts.api.beginCheckpoint();
   const commit = archive.changed || message ? await archive.finalize(message ?? "attic: update", opts.now) : null;
   const runs = (back?.added.runs ?? 0) + (inc?.added.runs ?? 0);
   const checks = (back?.added.checks ?? 0) + (inc?.added.checks ?? 0);
   const statuses = (back?.added.statuses ?? 0) + (inc?.added.statuses ?? 0);
-  const checkpoint = back?.stoppedBecause ?? inc?.stoppedBecause ?? null;
+  const checkpoint = back?.stoppedBecause ?? inc?.stoppedBecause ?? interrupted;
   return {
     mode: opts.mode,
     backfill: back,
@@ -20472,12 +20564,13 @@ async function run() {
     setFailed(`input "mode" must be one of ${MODES.join(", ")}, got "${mode}"`);
     return;
   }
-  const slug = input("repository", process.env.GITHUB_REPOSITORY ?? "");
-  if (!slug) {
-    setFailed("could not work out which repository to archive; set GITHUB_REPOSITORY or the `repository` input.");
+  const host = process.env.GITHUB_REPOSITORY ?? "";
+  if (!host) {
+    setFailed("GITHUB_REPOSITORY is not set, so there is nowhere to write the archive branch.");
     return;
   }
-  const { owner, repo } = parseRepo(slug);
+  const { owner: hostOwner, repo: hostRepo } = parseRepo(host);
+  const { owner, repo } = parseRepo(input("repository", host));
   const branch = input("branch", "actions-attic");
   const months = intInput("backfill-months", 14, 1, 120);
   const maxRequests = intInput("max-requests", 800, 1, 1e6);
@@ -20491,8 +20584,9 @@ async function run() {
     log: (m) => info(m),
     warn: (m) => warning(m)
   });
-  info(`actions-attic: ${owner}/${repo} -> ${branch} (mode ${mode}, budget ${maxRequests} requests)`);
-  const backend = await BranchBackend.open(api, owner, repo, branch, {
+  const target = `${hostOwner}/${hostRepo}@${branch}`;
+  info(`actions-attic: ${owner}/${repo} -> ${target} (mode ${mode}, budget ${maxRequests} requests)`);
+  const backend = await BranchBackend.open(api, hostOwner, hostRepo, branch, {
     committer: { name: "actions-attic", email: "actions-attic@users.noreply.github.com" },
     warn: (m) => warning(m)
   });
@@ -20516,9 +20610,10 @@ async function run() {
   setOutput("committed", summary2.commit !== null);
   setOutput("commit-sha", summary2.commit?.sha ?? "");
   setOutput("backfill-frontier", summary2.frontier ?? "");
-  setOutput("backfill-complete", summary2.frontier === null);
+  setOutput("backfill-complete", summary2.archive.manifest.backfillComplete);
   setOutput("requests-used", summary2.requests);
   setOutput("branch", branch);
+  setOutput("source-repository", `${owner}/${repo}`);
   if (summary2.commit) info(`committed ${summary2.commit.sha ?? ""} \u2014 ${summary2.message}`);
   else info("nothing new to archive; no commit made");
   if (summary2.checkpoint) {
@@ -20527,18 +20622,21 @@ async function run() {
     );
   }
   const totals = summary2.archive.manifest.counts;
-  await summary.addHeading("actions-attic", 3).addRaw(`Archive branch \`${branch}\` \u2014 ${summary2.commit ? `committed \`${summary2.message}\`` : "no change"}`).addTable([
+  const n2 = (value) => value.toLocaleString("en-US");
+  const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""} \u2014 the next run continues from here.`;
+  await summary.addHeading(`actions-attic \u2014 ${owner}/${repo}`, 3).addRaw(
+    summary2.commit ? `Committed \`${summary2.message}\` to \`${branch}\`.` : `Nothing new on \`${branch}\`; no commit made.`,
+    true
+  ).addBreak().addTable([
     [
-      { data: "record", header: true },
+      { data: "record type", header: true },
       { data: "new this run", header: true },
       { data: "total archived", header: true }
     ],
-    ["runs", String(summary2.runs), totals.runs.toLocaleString("en-US")],
-    ["checks", String(summary2.checks), totals.checks.toLocaleString("en-US")],
-    ["statuses", String(summary2.statuses), totals.statuses.toLocaleString("en-US")]
-  ]).addRaw(
-    summary2.frontier ? `Backfill frontier: \`${summary2.frontier}\` \u2014 the next run resumes before this month.` : "Backfill complete."
-  ).addRaw(` ${summary2.requests} API requests used.`).write();
+    ["workflow runs", n2(summary2.runs), n2(totals.runs)],
+    ["check runs", n2(summary2.checks), n2(totals.checks)],
+    ["commit statuses", n2(summary2.statuses), n2(totals.statuses)]
+  ]).addRaw(`${state} ${n2(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`, true).write();
 }
 run().catch((err) => {
   if (err instanceof BudgetExhausted) {

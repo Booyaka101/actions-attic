@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.jsonl text eol=lf
+*.png binary
 dist/index.cjs -diff linguist-generated
+docs/** linguist-documentation

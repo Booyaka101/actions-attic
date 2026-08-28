@@ -4,7 +4,7 @@
  */
 
 import type { Manifest } from './archive.js';
-import { type Context, type StoreResult, addResults, captureMonth, storeMonth } from './collect.js';
+import { type Context, type StoreResult, addResults, captureMonth, storeRuns, storeShas } from './collect.js';
 import { type Month, currentMonth, monthsBack, shiftMonth } from './months.js';
 
 export interface BackfillOptions {
@@ -69,13 +69,22 @@ export async function backfill(ctx: Context, opts: BackfillOptions): Promise<Bac
     }
     ctx.log(`backfilling ${month}`);
     monthsTouched.push(month);
-    const captured = await captureMonth(ctx, month, ctx.archive.partialWindows(month));
+    // Runs are written window by window rather than collected first, so the
+    // window checkpoint can never run ahead of what is actually stored.
+    const progress = ctx.archive.partialWindows(month);
+    const monthly: StoreResult = { runs: 0, checks: 0, statuses: 0 };
+    const captured = await captureMonth(ctx, month, {
+      progress,
+      store: async (batch) => {
+        monthly.runs += await storeRuns(ctx, month, batch);
+      },
+    });
+    const stored = captured.complete ? await storeShas(ctx, month, monthly) : { complete: false };
     windows.push(...captured.windows);
-    const stored = await storeMonth(ctx, month, captured.runs);
-    added = addResults(added, stored.added);
+    added = addResults(added, monthly);
 
     if (!captured.complete || !stored.complete) {
-      ctx.archive.setPartialWindows(month, captured.progress);
+      ctx.archive.setPartialWindows(month, progress);
       stoppedBecause = ctx.api.exhaustReason() ?? 'request budget exhausted mid-month';
       ctx.log(`stopping inside ${month}; the next run resumes at the windows still outstanding`);
       break;

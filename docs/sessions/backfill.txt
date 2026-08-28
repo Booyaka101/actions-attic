@@ -1,0 +1,34 @@
+# actions-attic — backfilling cli/cli across three budget-limited runs
+$ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
+2026-08-01..2026-08-31 hits the 1000-result cap; splitting
+2026-08-01..2026-08-15 hits the 1000-result cap; splitting
+2026-08-01..2026-08-07 hits the 1000-result cap; splitting
+2026-08-16..2026-08-31 hits the 1000-result cap; splitting
+2026-08-16..2026-08-23 hits the 1000-result cap; splitting
+stopping inside 2026-08; the next run resumes at the windows still outstanding
+max-requests ceiling reached after 30 requests; saving progress now
+attic: backfill 2026-08 in progress (2,612 runs)
+wrote 2 files to ./attic (2,612 runs, 0 checks, 0 statuses new)
+30 API requests used
+checkpointed: reached the max-requests ceiling of 30
+
+$ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
+2026-07-01..2026-07-31 hits the 1000-result cap; splitting
+2026-07-01..2026-07-15 hits the 1000-result cap; splitting
+stopping inside 2026-07; the next run resumes at the windows still outstanding
+max-requests ceiling reached after 30 requests; saving progress now
+attic: backfill 2026-08 (2,435 runs)
+wrote 3 files to ./attic (2,435 runs, 0 checks, 0 statuses new)
+30 API requests used
+backfill frontier at 2026-08-01; run again to continue
+checkpointed: reached the max-requests ceiling of 30
+
+$ npx actions-attic backfill cli/cli --archive ./attic --months 2 --max-requests 30 --no-checks --no-statuses
+2026-07-16..2026-07-31 hits the 1000-result cap; splitting
+attic: backfill 2026-07 (2,101 runs)
+wrote 2 files to ./attic (2,101 runs, 0 checks, 0 statuses new)
+25 API requests used
+backfill complete
+
+$ npx actions-attic flake "Unit and Integration Tests" --since 2026-07 --until 2026-07 --archive ./attic
+Unit and Integration Tests: 272 runs, 266 success, 6 failure, flake rate 2.2% (peak 2026-07 at 2.2%)

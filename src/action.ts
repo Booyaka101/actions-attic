@@ -40,12 +40,16 @@ export async function run(): Promise<void> {
     return;
   }
 
-  const slug = input('repository', process.env.GITHUB_REPOSITORY ?? '');
-  if (!slug) {
-    core.setFailed('could not work out which repository to archive; set GITHUB_REPOSITORY or the `repository` input.');
+  // The archive branch always lives in the repository running the workflow,
+  // which is the only one github.token can write to. `repository` only chooses
+  // whose Actions history to read.
+  const host = process.env.GITHUB_REPOSITORY ?? '';
+  if (!host) {
+    core.setFailed('GITHUB_REPOSITORY is not set, so there is nowhere to write the archive branch.');
     return;
   }
-  const { owner, repo } = parseRepo(slug);
+  const { owner: hostOwner, repo: hostRepo } = parseRepo(host);
+  const { owner, repo } = parseRepo(input('repository', host));
   const branch = input('branch', 'actions-attic');
   const months = intInput('backfill-months', 14, 1, 120);
   const maxRequests = intInput('max-requests', 800, 1, 1_000_000);
@@ -61,9 +65,10 @@ export async function run(): Promise<void> {
     warn: (m) => core.warning(m),
   });
 
-  core.info(`actions-attic: ${owner}/${repo} -> ${branch} (mode ${mode}, budget ${maxRequests} requests)`);
+  const target = `${hostOwner}/${hostRepo}@${branch}`;
+  core.info(`actions-attic: ${owner}/${repo} -> ${target} (mode ${mode}, budget ${maxRequests} requests)`);
 
-  const backend = await BranchBackend.open(api, owner, repo, branch, {
+  const backend = await BranchBackend.open(api, hostOwner, hostRepo, branch, {
     committer: { name: 'actions-attic', email: 'actions-attic@users.noreply.github.com' },
     warn: (m) => core.warning(m),
   });
@@ -89,9 +94,10 @@ export async function run(): Promise<void> {
   core.setOutput('committed', summary.commit !== null);
   core.setOutput('commit-sha', summary.commit?.sha ?? '');
   core.setOutput('backfill-frontier', summary.frontier ?? '');
-  core.setOutput('backfill-complete', summary.frontier === null);
+  core.setOutput('backfill-complete', summary.archive.manifest.backfillComplete);
   core.setOutput('requests-used', summary.requests);
   core.setOutput('branch', branch);
+  core.setOutput('source-repository', `${owner}/${repo}`);
 
   if (summary.commit) core.info(`committed ${summary.commit.sha ?? ''} — ${summary.message}`);
   else core.info('nothing new to archive; no commit made');
@@ -104,25 +110,31 @@ export async function run(): Promise<void> {
   }
 
   const totals = summary.archive.manifest.counts;
+  const n = (value: number) => value.toLocaleString('en-US');
+  const state = summary.archive.manifest.backfillComplete
+    ? 'Backfill complete.'
+    : `Backfill in progress${summary.frontier ? `, frontier \`${summary.frontier}\`` : ''} — the next run continues from here.`;
+
   await core.summary
-    .addHeading('actions-attic', 3)
-    .addRaw(`Archive branch \`${branch}\` — ${summary.commit ? `committed \`${summary.message}\`` : 'no change'}`)
+    .addHeading(`actions-attic — ${owner}/${repo}`, 3)
+    .addRaw(
+      summary.commit
+        ? `Committed \`${summary.message}\` to \`${branch}\`.`
+        : `Nothing new on \`${branch}\`; no commit made.`,
+      true,
+    )
+    .addBreak()
     .addTable([
       [
-        { data: 'record', header: true },
+        { data: 'record type', header: true },
         { data: 'new this run', header: true },
         { data: 'total archived', header: true },
       ],
-      ['runs', String(summary.runs), totals.runs.toLocaleString('en-US')],
-      ['checks', String(summary.checks), totals.checks.toLocaleString('en-US')],
-      ['statuses', String(summary.statuses), totals.statuses.toLocaleString('en-US')],
+      ['workflow runs', n(summary.runs), n(totals.runs)],
+      ['check runs', n(summary.checks), n(totals.checks)],
+      ['commit statuses', n(summary.statuses), n(totals.statuses)],
     ])
-    .addRaw(
-      summary.frontier
-        ? `Backfill frontier: \`${summary.frontier}\` — the next run resumes before this month.`
-        : 'Backfill complete.',
-    )
-    .addRaw(` ${summary.requests} API requests used.`)
+    .addRaw(`${state} ${n(summary.requests)} API request${summary.requests === 1 ? '' : 's'} used.`, true)
     .write();
 }
 
