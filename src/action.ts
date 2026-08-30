@@ -2,7 +2,9 @@
 
 import * as core from '@actions/core';
 import { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
+import { Archive } from './archive.js';
 import { RefBackend, normalizeRef } from './backend.js';
+import { type PreflightResult, formatPreflight, runPreflight } from './preflight.js';
 import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 
 function input(name: string, fallback: string): string {
@@ -37,9 +39,9 @@ export async function run(): Promise<void> {
     return;
   }
 
-  const mode = input('mode', 'auto') as Mode;
-  if (!MODES.includes(mode)) {
-    core.setFailed(`input "mode" must be one of ${MODES.join(', ')}, got "${mode}"`);
+  const mode = input('mode', 'auto');
+  if (mode !== 'preflight' && !MODES.includes(mode as Mode)) {
+    core.setFailed(`input "mode" must be one of ${MODES.join(', ')}, preflight, got "${mode}"`);
     return;
   }
 
@@ -84,14 +86,23 @@ export async function run(): Promise<void> {
     committer: { name: 'actions-attic', email: 'actions-attic@users.noreply.github.com' },
     warn: (m) => core.warning(m),
   });
-  if (backend.isNew) core.info(`${ref} does not exist yet; this run will create it`);
+  if (backend.isNew) {
+    core.info(
+      mode === 'preflight' ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`,
+    );
+  }
+
+  if (mode === 'preflight') {
+    await preflightRun(api, backend, owner, repo);
+    return;
+  }
 
   const summary = await runArchive({
     api,
     backend,
     owner,
     repo,
-    mode,
+    mode: mode as Mode,
     months,
     maxPages,
     skipChecks,
@@ -156,6 +167,68 @@ export async function run(): Promise<void> {
       ['commit statuses', n(summary.statuses), n(totals.statuses)],
     ])
     .addRaw(`${state} ${n(summary.requests)} API request${summary.requests === 1 ? '' : 's'} used.`, true)
+    .write();
+}
+
+/** Report what the retention change will delete. Reads the archive, never writes it. */
+async function preflightRun(api: Api, backend: RefBackend, owner: string, repo: string): Promise<void> {
+  const retentionRaw = core.getInput('retention-days').trim();
+  const retentionDays = retentionRaw === '' ? null : intInput('retention-days', 90, 1, 3650);
+  const failOn = boolInput('fail-on-unarchived');
+
+  const archive = await Archive.open(backend, `${owner}/${repo}`);
+  const result = await runPreflight({
+    api,
+    archive,
+    owner,
+    repo,
+    retentionDays,
+    log: (m) => core.info(m),
+    warn: (m) => core.warning(m),
+  });
+
+  core.setOutput('retention-days', result.retentionDays);
+  core.setOutput('retention-source', result.retentionSource);
+  core.setOutput('unarchived-total', result.unarchived.total);
+  core.setOutput('preflight-json', JSON.stringify(result));
+
+  const next = 'this workflow with mode auto or backfill until it reports backfill complete';
+  core.info(formatPreflight(result, next));
+  await writePreflightSummary(result, api.requests);
+
+  if (failOn && result.unarchived.total > 0) {
+    core.setFailed(
+      `${result.unarchived.total.toLocaleString('en-US')} at-risk records are not archived. Run ${next}.`,
+    );
+  }
+}
+
+async function writePreflightSummary(result: PreflightResult, requests: number): Promise<void> {
+  const n = (value: number) => value.toLocaleString('en-US');
+  const verdict =
+    result.unarchived.total > 0
+      ? `**${n(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.`
+      : 'Everything at risk is already in the attic.';
+  await core.summary
+    .addHeading('actions-attic preflight', 3)
+    .addRaw(
+      `Retention window: ${n(result.retentionDays)} days (${result.retentionSource}). ` +
+        `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
+      true,
+    )
+    .addBreak()
+    .addTable([
+      [
+        { data: 'record type', header: true },
+        { data: 'at risk', header: true },
+        { data: 'archived', header: true },
+        { data: 'unarchived', header: true },
+      ],
+      ['workflow runs', n(result.atRisk.runs), n(result.archived.runs), n(result.unarchived.runs)],
+      ['check runs', n(result.atRisk.checks), n(result.archived.checks), n(result.unarchived.checks)],
+      ['commit statuses', n(result.atRisk.statuses), n(result.archived.statuses), n(result.unarchived.statuses)],
+    ])
+    .addRaw(`${n(requests)} API request${requests === 1 ? '' : 's'} used.`, true)
     .write();
 }
 

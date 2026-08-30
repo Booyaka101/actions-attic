@@ -1,163 +1,76 @@
 # actions-attic build state
 
-**Status: v1.1.0 shipped.** Published to npm and released on GitHub, 2026-08-28. v1.1.0 moved the archive off an orphan branch onto `refs/attic/archive`. The Marketplace listing form is filled and submitted; it needs one 6-digit code from the owner's authenticator app to land.
+**Status: v1.2.0 built and verified, ready to ship.** Adds the `preflight` command (CLI and
+Action) on top of v1.1.0. All previous behaviour untouched: archive format, ref, and the
+eight existing commands are unchanged.
 
-Built and reviewed 2026-08-28.
+Built 2026-08-30 on branch `feat/preflight`.
 
-## Phase 0 verification (all resources re-fetched live, none missing)
+## What 1.2.0 adds
 
-| Resource | Result |
-| --- | --- |
-| `github.blog/changelog/2026-08-27-actions-retention-...` | All four quoted sentences present verbatim |
-| REST `GET /repos/{o}/{r}/actions/runs` | Endpoint, `created`/`per_page` (max 100)/`page`/`status`/`branch`/`event`, and the "up to 1,000 results for each search" sentence all confirmed |
-| REST check runs | `commits/{ref}/check-runs` and `check-suites/{id}/check-runs`, fields and `total_count` confirmed |
-| REST commit statuses | `commits/{ref}/statuses` and `/status`, pull access + `repo:status`, fields confirmed |
-| REST rate limits | "1,000 requests per hour per repository" for `GITHUB_TOKEN`, 5,000 for PATs, `x-ratelimit-*`, `retry-after` all confirmed |
-| community discussions 138249 / 123969 / 190621 | Confirmed as briefed, including the "In Backlog" label and the Actions Data Stream wording |
-| `githubocto/github-archive-action` | `archived: true`, 8 stars, 3 open issues |
-| `arddluma/GHAlyzer` | 3 stars, read-only analytics, no persistence |
-| Cost | Zero. `GITHUB_TOKEN` inside Actions, existing local `gh` auth for the CLI. No paid API, account or hosting. |
-| Toolchain | Node v22.18.0, `node:sqlite` works (experimental warning suppressed in the bin shim), npm name `actions-attic` free (registry 404) |
+- `preflight <owner/repo>`: resolves the retention window (`--retention-days` flag, else
+  the repository's artifact-and-log retention setting via
+  `GET /repos/{o}/{r}/actions/permissions/artifact-and-log-retention`, else GitHub's 90-day
+  platform default), clamps to `maximum_allowed_days` and to 90 for public repos, computes
+  the cutoff, counts remote runs/checks/statuses created before it, and reports what is not
+  in the attic. `--json`, `--fail-on-unarchived` (exit 1 while unprotected), `--archive`
+  (compare a local directory instead of the ref).
+- Action `mode: preflight` with `retention-days` and `fail-on-unarchived` inputs, four new
+  outputs, and a job summary table.
+- `Api.getRetentionSettings()` returns null on 403/404 (the endpoint needs `repo` scope on
+  classic PATs) so the default can fire.
+
+Design fact it leans on (LESSONS 2026-08-28): the runs endpoint's `total_count` is exact
+for a `created=` filter despite the 1,000-result serving cap, so counting runs before the
+cutoff costs one request. Verified again live this build, including sub-day instants:
+`created=<2026-08-28T03:00:00Z` returned exactly the 3 runs before 03:00. Checks/statuses
+have no counting endpoint; they come from the archive plus per-commit fetches for only the
+commits the archive has not covered (per-month count probes localize any run gap first).
 
 ## Verified working (real runs, not tests)
 
-- **Backfill across invocations, `cli/cli` (>1,000 runs/month).** Three invocations at a 30-request ceiling, 85 requests total, 7,148 runs. Archived counts match the API's `total_count` exactly: 3,133 for 2026-07 and 4,015 for 2026-08. Zero duplicates, zero 403s.
-- **1,000-result cap handling.** `2026-08-01..2026-08-31` reported 4,015, split recursively to `..-07`, `..-15`, `..-23` and so on until every leaf window was under the cap.
-- **Three-level checkpointing.** Month frontier, sub-month window set, and page number within a window. Proven by a run that stopped mid-page and resumed at the next page.
-- **flake vs live API.** `Unit and Integration Tests` for 2026-07 on `cli/cli`: archive says 266 success / 6 failure; the API's `status=success` and `status=failure` counts say 266 and 6.
-- **All three record types on real data.** `numpy/numpy` 2026-08: 10,829 runs, 6,981 check runs, 969 real CircleCI commit statuses. SQLite index row counts match JSONL line counts exactly.
-- **Per-commit resume.** A second numpy invocation made zero run requests (month already walked) and went straight to the 549 commits still needing checks.
-- **The Action itself, live.** Compiled `dist/index.cjs` run against `Booyaka101/rimpatch` with real inputs: created a real orphan branch (parent count 0), committed `attic: backfill 2025-07..2026-08 (14 runs)`, wrote `runs/`, `checks/`, `shas/` and `manifest.json`, emitted all nine outputs and a job summary. A second run made no commit. Test branch deleted afterwards; `rimpatch` is back to `main` only.
-- **Consecutive runs make no commit.** Both CLI and Action.
-- **Clean install.** `npm pack` → install the tarball into an empty directory → `actions-attic --help`, `--version`, `flake` and `build` all work. 32 files in the tarball, `lib/` + `dist/` + `bin/` + `action.yml`.
-- **Tests.** 81 tests, all passing: `npm test`. A fresh `git clone` + `npm ci` + `npm test` was verified in an isolated directory.
+- Phase 0: changelog, retention-settings API doc, published README and PROGRESS all
+  re-fetched and matching the brief. Cost still zero (existing `gh` auth).
+- Tarball install in a clean dir (`D:\tmp\attic-e2e`, own package.json, relative tgz path),
+  then against live GitHub on `Booyaka101/rimpatch` (14 runs, 112 checks, all younger than
+  90 days so `--retention-days 5` makes them at-risk):
+  - preflight before any archive: `Unarchived and at risk: 14 runs, 112 check runs,
+    0 statuses. Run: actions-attic backfill Booyaka101/rimpatch`, exit 1 under
+    `--fail-on-unarchived`.
+  - `backfill --archive ./attic`: 14 runs + 112 checks in 28 requests.
+  - preflight after: `Nothing at risk. 126 records already in the attic.`, exit 0.
+  - `--json` parses, `retentionSource: "api"`, `retentionDays: 90` (public repo).
+  - default 90-day run: `Nothing at risk. No records are older than the cutoff.`
+- The compiled Action bundle (`dist/index.cjs`) run locally with `INPUT_MODE=preflight`
+  against live GitHub: resolves retention, prints the report, writes the summary table,
+  sets the four outputs, and fails the step only under `fail-on-unarchived`.
+- Tests: 102 passing (85 pre-existing kept green + 17 new), `npm test`. New coverage: the
+  brief's eight edge cases (400-day window, 403+flag, 403+default, public clamp, zero old
+  records, all archived, partial archive, missing ref), the flag-above-maximum clamp,
+  post-cutoff checks on old commits, the budget error, the worked-example output lines, CLI
+  exit codes before/after a backfill via a real spawned process against a local mock API,
+  and preflight reading a ref the Action wrote (fake git server).
+- difflib pass over the new functions: highest similarity to any existing function is 0.47
+  (`runPreflight` vs `asUsage`, the try/catch shape). Nothing extracted; the tiny `plural`
+  formatter is intentionally duplicated in `preflight.ts` the same way `n` already is in
+  three files.
 
-## Bugs found by real data and fixed
+## Shipping steps remaining
 
-1. An interrupted first month left `backfillFrontier: null`, which `auto` mode read as "backfill complete". Added `backfillComplete` and `backfillOldestMonth`.
-2. A month bigger than one request budget restarted from scratch every invocation and never advanced, a livelock, reproduced live on `cli/cli`. Added sub-month window checkpointing (`backfillPartial`).
-3. Pages already fetched were discarded when the budget aborted a window mid-pagination. Now kept via `try/finally`.
-4. A leaf window needing more pages than the whole budget could never complete. Added page-level resume (`startPage` / `onPage`).
+1. Push `feat/preflight`, open a PR, wait for the 6 checks green on the exact commit
+   (check-runs API, not `gh run watch`).
+2. Merge, then on main: `npm publish` (local authenticated session; still no provenance,
+   same as 1.0.0/1.1.0), `gh release create v1.2.0`, move the `v1` tag to the release
+   commit. The Marketplace listing updates itself on release (LESSONS 2026-08-20).
+3. Verify `npm view actions-attic@1.2.0` resolves (registry propagation lags) and the
+   Marketplace page shows v1.2.0.
 
-All four have regression tests.
+## Earlier history
 
-
-## Senior review pass (2026-08-28, after the first build)
-
-A full read-through plus an isolated test environment and adversarial edge-case probing found six
-more defects. All are fixed and all have regression tests; the suite went from 60 to 81 tests.
-
-1. **The Action committed nothing whenever it spent its budget. Critical.** The commit itself needs
-   API requests, and the walk stopped exactly at the `max-requests` ceiling, so `finalize()` threw
-   before writing. Every night's work was discarded and the backfill could never converge on any
-   repository big enough to hit the ceiling, which is precisely what the tool is for. Invisible to
-   the CLI, whose file backend spends no requests. Fixed with `Api.withCheckpointBudget()`:
-   persisting data already fetched outranks the self-imposed ceiling, while the live rate limit
-   still applies. Proven live: `cli/cli`'s August, 4 nights at a 20-request budget, 4,015 runs,
-   matching `total_count` exactly. Before the fix that scenario committed zero.
-2. **Window checkpoints could run ahead of the data.** A window was recorded as captured when its
-   pages were *fetched*, not when they were *stored*. An interruption in between marked the window
-   done and lost those runs for good, measured at 150 runs silently missing while the month was
-   reported complete. Runs are now written window by window, and every checkpoint strictly follows a
-   successful write.
-3. **Queued check runs were silently dropped.** A check run that has not started has neither
-   `started_at` nor `completed_at`, so it had no month to be filed under and was discarded, and its
-   commit was then marked fetched, so it was never revisited. `add()` now takes the month of the run
-   that referenced it.
-4. **A commit re-read the whole archive.** Recounting on every `finalize()` cost one API request per
-   month per record type on the branch backend: 43 wasted requests a night on a 14-month archive,
-   growing without bound. The manifest now keeps a running total, `recount()` exists to repair or
-   verify, and `stats` always reports what is really on disk.
-5. **`repository` was advertised but broken.** It redirected the branch write as well as the read, so
-   archiving another repository 404'd on a repo the token cannot write to. The branch now always
-   lives in the repository running the workflow; `repository` only chooses whose history to read.
-6. **`backfill-complete` output was wrong** when the backfill had not started, because a null
-   frontier means both "finished" and "nothing done yet".
-
-House rules: a difflib pass over all 67 functions found `daysInMonth`/`monthToIndex` at 67%
-similarity (shared `parseMonth` extracted) and two CLI validators at 53% (shared `asUsage`
-extracted). No pair is now above 45%. Output wording was tightened for humans: correct plurals,
-thousands separators everywhere, paths shown relative to the working directory with forward slashes,
-and a `stats` table that flags any disagreement between the manifest and the files.
-
-Docs assets in `docs/` are rendered by `scripts/screenshots.mjs` from the verbatim captures in
-`docs/sessions/`; every line in them is real output from a live run.
-
-## 1.1.0: the archive is a ref, not a branch
-
-An orphan branch is a thing the repository owner has to look after. It shows in the branch list, it
-comes down on every clone, it can be picked as a PR base, and worst of all a nightly commit to it
-fires `on: push: branches: ['**']` workflows, so we would impose a CI run a night on every repo that
-has one. Measured on `Booyaka101/rimpatch`, which has an active push workflow: writing
-`refs/attic/archive` triggered zero runs, and `git branch -a` after a fresh clone still showed only
-`main`.
-
-- `RefBackend` replaces `BranchBackend`, which stays as a deprecated alias so 1.0 imports keep working.
-- `normalizeRef` treats a bare name as a branch, so `ref: my-archive` still means `refs/heads/my-archive`.
-- The `branch` input is deprecated but honoured, so upgrading never moves an existing archive.
-- New `archive-url` output and job-summary link, since GitHub's file browser cannot resolve a custom
-  ref but browses any commit by SHA. Verified 200 on a real commit.
-- New `actions-attic pull <owner/repo>` reads the ref over the API into a directory, so nobody has to
-  remember `git fetch origin 'refs/attic/*:refs/attic/*'`. Verified from a clean directory: 4 files,
-  7 API requests, then `stats`, `build` and `flake` all read it.
-
-## Shipped
-
-| Where | State |
-| --- | --- |
-| GitHub | https://github.com/Booyaka101/actions-attic, public, 8 topics |
-| Release | v1.0.0 at `82da50f`, plus a moving `v1` tag |
-| CI on the release commit | 6/6 green: 4 test legs (ubuntu + windows, node 22 + 24), `dist-is-current`, `pack` |
-| npm | `actions-attic@1.0.0`, MIT, 32 files, 983 kB unpacked. Verified by installing from the registry into an empty directory and archiving a live repository. |
-| Marketplace | Form submitted with Continuous integration + Backup Utilities. Blocked on sudo. |
-
-**No provenance attestation on 1.0.0.** It was published from an authenticated local npm session,
-and provenance needs an OIDC publish from a GitHub runner, which needs a token minted behind 2FA.
-npm forbids republishing a version, so 1.0.0 cannot gain one later. To get provenance from 1.0.1
-onward, set up npm Trusted Publishing for the package and publish from CI.
-
-## Finishing the Marketplace listing
-
-The release edit form has already been submitted with the Marketplace box ticked and both categories
-set. GitHub is holding that POST behind sudo and replays it automatically once sudo clears, so
-nothing needs re-ticking.
-
-1. In the open Chrome tab on `github.com/Booyaka101/actions-attic/releases/tag/v1.0.0`, the
-   "Confirm access" page is showing the authenticator field (`#app_totp`, placeholder XXXXXX).
-2. Type the 6-digit code from the authenticator app and click Verify. Ignore "Send a code via
-   email"; measured delivery here has run 45 to 90 minutes, past the code's own validity.
-3. `https://github.com/marketplace/actions/actions-attic` goes from 404 to 200 within a few minutes.
-
-Sudo then lasts about three hours. Later releases need no UI step at all: once an Action is listed,
-`gh release create` alone publishes the new version.
-
-## Distribution, 2026-08-28
-
-| Channel | State |
-| --- | --- |
-| GitHub Marketplace | Live, `actions-attic@v1`, Continuous integration + Backup Utilities |
-| npm | `actions-attic@1.1.0` |
-| r/booyakatools, Discord `#tool-releases` | Both releases posted by the owner's automation |
-| Hacker News | https://news.ycombinator.com/item?id=49477735, the changelog as the story, tool disclosed in the first comment |
-| dev.to | https://dev.to/booyaka101/github-starts-deleting-your-actions-run-history-on-october-1-there-is-no-export-button-3ck1 |
-| community discussion 138249 | Drafted, owner decided not to post |
-
-The dev.to piece is a search asset rather than an audience play. Measured first: 20 prior articles
-on that account total 16 reactions and 9 comments, and three of them are the same deadline-plus-tool
-shape as this one, so the expected engagement there is about one reaction. It was published for the
-Google surface on queries people will type in October, and it is indexable with no robots
-restriction.
-
-**The launch is five weeks early.** The changelog does not bite until 1 October, so nobody is
-searching for this yet. The high-value move is a second run at the story in late September, when
-"GitHub starts deleting Actions history on Monday" is imminent rather than hypothetical. HN permits
-resubmitting a URL that got no traction, and r/devops becomes worth the rules-reading then too.
-
-## Not done, deliberately
-
-- Out of scope for v1 per the brief: org-wide rollup, log text download, artifacts, web dashboard, Prometheus, hosted service.
-
-## First distribution step
-
-A comment in [community discussion #138249](https://github.com/orgs/community/discussions/138249),
-the thread where people have asked GitHub for exactly this since 2024, still labelled "In Backlog".
+v1.1.0 (2026-08-28): archive moved to `refs/attic/archive`, `pull` command, `archive-url`
+output. v1.0.0 (2026-08-28): first release, 6 defects found by senior review all fixed with
+regression tests. Full details in this file's git history and CHANGELOG.md. The September
+distribution plan stands: a second run at the story in late September when the deadline is
+imminent, HN resubmission allowed, and community discussion #138249 as the first step.
+`preflight --fail-on-unarchived` is the launch hook for that repost: "one command tells you
+what you will lose on Monday".
