@@ -20818,7 +20818,11 @@ async function run() {
     committer: { name: "actions-attic", email: "actions-attic@users.noreply.github.com" },
     warn: (m) => warning(m)
   });
-  if (backend.isNew) info(`${ref} does not exist yet; this run will create it`);
+  if (backend.isNew) {
+    info(
+      mode === "preflight" ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`
+    );
+  }
   if (mode === "preflight") {
     await preflightRun(api, backend, owner, repo);
     return;
@@ -20895,12 +20899,12 @@ async function preflightRun(api, backend, owner, repo) {
   setOutput("retention-source", result.retentionSource);
   setOutput("unarchived-total", result.unarchived.total);
   setOutput("preflight-json", JSON.stringify(result));
-  const next = "run this workflow with mode auto or backfill until the backfill completes";
+  const next = "this workflow with mode auto or backfill until it reports backfill complete";
   info(formatPreflight(result, next));
   await writePreflightSummary(result, api.requests);
   if (failOn && result.unarchived.total > 0) {
     setFailed(
-      `${result.unarchived.total.toLocaleString("en-US")} at-risk records are not archived; ${next}.`
+      `${result.unarchived.total.toLocaleString("en-US")} at-risk records are not archived. Run ${next}.`
     );
   }
 }

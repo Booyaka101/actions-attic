@@ -60,6 +60,7 @@ actions-attic sync <owner/repo>          top up new runs, then continue the back
 actions-attic backfill <owner/repo>      walk history backwards only
 actions-attic incremental <owner/repo>   append new runs only
 actions-attic pull <owner/repo>          copy an archive ref down into a local directory
+actions-attic preflight <owner/repo>     what the retention change will delete, and what is archived
 actions-attic build                      build a SQLite index over the archive
 actions-attic flake <workflow>           flake rate for one workflow
 actions-attic stats                      what the archive currently holds
@@ -156,6 +157,62 @@ CI: 7 runs, 7 success, 0 failure, flake rate 0.0%
 
 </details>
 
+## Will this repository lose anything on October 1?
+
+`preflight` answers exactly that: it resolves the retention window (an explicit
+`--retention-days`, else the repository's own retention setting, else GitHub's 90-day
+platform default), counts the remote runs, check runs and commit statuses created before
+the cutoff, and reports how many of them are not in the attic yet. With
+`--fail-on-unarchived` it exits 1 while anything is unprotected, so it works as a scheduled
+gate; `--json` prints the structured result and nothing else.
+
+A real session against [`Booyaka101/rimpatch`](https://github.com/Booyaka101/rimpatch),
+using `--retention-days 5` so its young history has something at risk:
+
+```
+$ npx actions-attic preflight Booyaka101/rimpatch --retention-days 5 --fail-on-unarchived
+Booyaka101/rimpatch has no archive at refs/attic/archive yet
+fetching checks/statuses for 7 commits not yet in the archive
+retention window: 5 days (--retention-days)
+from 2026-10-01, records created before 2026-08-25T01:10:19Z are deleted
+at risk: 14 runs, 112 check runs, 0 statuses
+already archived: 0 runs, 0 check runs, 0 statuses
+Unarchived and at risk: 14 runs, 112 check runs, 0 statuses. Run: actions-attic backfill Booyaka101/rimpatch
+
+$ npx actions-attic backfill Booyaka101/rimpatch --archive ./attic
+backfilling 2026-08
+2026-08: fetching checks/statuses for 7 new commits
+...
+attic: backfill 2025-07..2026-08 (14 runs)
+wrote 4 files to ./attic (14 runs, 112 checks, 0 statuses new)
+28 API requests used
+backfill complete
+
+$ npx actions-attic preflight Booyaka101/rimpatch --retention-days 5 --archive ./attic --fail-on-unarchived
+retention window: 5 days (--retention-days)
+from 2026-10-01, records created before 2026-08-25T01:10:43Z are deleted
+at risk: 14 runs, 112 check runs, 0 statuses
+already archived: 14 runs, 112 check runs, 0 statuses
+Nothing at risk. 126 records already in the attic.
+```
+
+The first command exited 1, the last exited 0. By default preflight compares against the
+`refs/attic/archive` ref the Action writes; `--archive` compares against a local directory
+instead. Counting runs costs one request, because the runs endpoint reports its true
+`total_count` for a `created=` filter even though it serves at most 1,000 results. Checks
+and statuses are read from the archive, plus a per-commit fetch for only the commits the
+archive has not covered, so a populated attic makes preflight nearly free and an empty one
+costs about what the backfill it recommends would.
+
+The Action runs it on a schedule with `mode: preflight`:
+
+```yaml
+      - uses: Booyaka101/actions-attic@v1
+        with:
+          mode: preflight
+          fail-on-unarchived: true
+```
+
 Checks and statuses come from the same walk. One month of
 [`numpy/numpy`](https://github.com/numpy/numpy), which still uses CircleCI commit statuses alongside
 Actions checks:
@@ -191,14 +248,16 @@ JSONL line counts exactly.
 | `token` | `${{ github.token }}` | Needs `actions: read`, `checks: read`, `statuses: read`, `contents: write` |
 | `ref` | `refs/attic/archive` | Where the archive lives. A bare name is treated as a branch, so `ref: my-archive` means `refs/heads/my-archive`. |
 | `branch` | none | Deprecated since 1.1.0. Still honoured, so upgrading never moves an existing archive. |
-| `mode` | `auto` | `auto` tops up new runs then continues the backfill; also `backfill`, `incremental` |
+| `mode` | `auto` | `auto` tops up new runs then continues the backfill; also `backfill`, `incremental`, `preflight` |
 | `backfill-months` | `14` | How far back to walk |
 | `max-requests` | `800` | `GITHUB_TOKEN` gets 1,000 requests/hour/repository, so 800 leaves headroom |
 | `max-pages` | `50` | Page ceiling for an incremental catch-up |
 | `repository` | current repo | Read another repository's history. The branch is always written to the repo running the workflow, which is the only one `github.token` can write to. |
 | `skip-checks` / `skip-statuses` | `false` | Runs-only archiving, much cheaper |
+| `retention-days` | read from the API | Preflight only: override the retention window |
+| `fail-on-unarchived` | `false` | Preflight only: fail the step while at-risk records are unarchived |
 
-Outputs: `runs-added`, `checks-added`, `statuses-added`, `committed`, `commit-sha`, `backfill-frontier`, `backfill-complete`, `requests-used`, `branch`.
+Outputs: `runs-added`, `checks-added`, `statuses-added`, `committed`, `commit-sha`, `backfill-frontier`, `backfill-complete`, `requests-used`, `branch`. Preflight sets `retention-days`, `retention-source`, `unarchived-total` and `preflight-json`.
 
 ## How it stays inside the rate limit
 

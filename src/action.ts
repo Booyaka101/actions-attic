@@ -86,7 +86,11 @@ export async function run(): Promise<void> {
     committer: { name: 'actions-attic', email: 'actions-attic@users.noreply.github.com' },
     warn: (m) => core.warning(m),
   });
-  if (backend.isNew) core.info(`${ref} does not exist yet; this run will create it`);
+  if (backend.isNew) {
+    core.info(
+      mode === 'preflight' ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`,
+    );
+  }
 
   if (mode === 'preflight') {
     await preflightRun(api, backend, owner, repo);
@@ -188,13 +192,13 @@ async function preflightRun(api: Api, backend: RefBackend, owner: string, repo: 
   core.setOutput('unarchived-total', result.unarchived.total);
   core.setOutput('preflight-json', JSON.stringify(result));
 
-  const next = 'run this workflow with mode auto or backfill until the backfill completes';
+  const next = 'this workflow with mode auto or backfill until it reports backfill complete';
   core.info(formatPreflight(result, next));
   await writePreflightSummary(result, api.requests);
 
   if (failOn && result.unarchived.total > 0) {
     core.setFailed(
-      `${result.unarchived.total.toLocaleString('en-US')} at-risk records are not archived; ${next}.`,
+      `${result.unarchived.total.toLocaleString('en-US')} at-risk records are not archived. Run ${next}.`,
     );
   }
 }

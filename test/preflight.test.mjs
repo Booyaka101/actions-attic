@@ -9,7 +9,10 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Api } from '../lib/api.js';
 import { Archive } from '../lib/archive.js';
+import { RefBackend } from '../lib/backend.js';
 import { formatPreflight, runPreflight } from '../lib/preflight.js';
+import { runArchive } from '../lib/run.js';
+import { makeGitServer } from './helpers/fake-git.mjs';
 
 const quiet = () => {};
 const NOW = new Date('2026-08-30T12:00:00Z');
@@ -237,6 +240,39 @@ test('running out of budget is an error with advice, not a checkpoint message', 
     runPreflight({ api, archive, owner: 'acme', repo: 'widget', now: NOW, log: quiet, warn: quiet }),
     /ran out of request budget.*backfill/s,
   );
+});
+
+test('preflight reads the archive ref the Action writes', async () => {
+  const remote = [run(1, '2026-01-05T00:00:00Z', 'aaa'), run(2, '2026-08-29T00:00:00Z', 'bbb')];
+  const gh = github({
+    runs: remote,
+    checksBySha: { aaa: [{ id: 11, started_at: '2026-01-05T00:01:00Z', head_sha: 'aaa' }] },
+    repoCreated: '2026-01-01T00:00:00Z',
+  });
+  const git = makeGitServer();
+  const fetchImpl = async (url, init) =>
+    new URL(url).pathname.includes('/git/') ? git.fetchImpl(url, init) : gh.fetchImpl(url);
+  const apiFor = () => new Api({ token: 't', maxRequests: 500, fetchImpl, sleep: async () => {} });
+
+  const writer = apiFor();
+  await runArchive({
+    api: writer,
+    backend: await RefBackend.open(writer, 'acme', 'widget', 'refs/attic/archive', { warn: quiet }),
+    owner: 'acme',
+    repo: 'widget',
+    mode: 'backfill',
+    months: 12,
+    now: NOW,
+    log: quiet,
+    warn: quiet,
+  });
+
+  const reader = apiFor();
+  const archive = await Archive.open(await RefBackend.open(reader, 'acme', 'widget', 'refs/attic/archive'), 'acme/widget');
+  const result = await runPreflight({ api: reader, archive, owner: 'acme', repo: 'widget', now: NOW, log: quiet, warn: quiet });
+  assert.deepEqual(result.atRisk, { runs: 1, checks: 1, statuses: 0 });
+  assert.deepEqual(result.archived, { runs: 1, checks: 1, statuses: 0 });
+  assert.equal(result.unarchived.total, 0);
 });
 
 const exec = promisify(execFile);
