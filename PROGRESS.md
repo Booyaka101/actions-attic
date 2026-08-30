@@ -1,10 +1,15 @@
 # actions-attic build state
 
-**Status: v1.2.0 built and verified, ready to ship.** Adds the `preflight` command (CLI and
-Action) on top of v1.1.0. All previous behaviour untouched: archive format, ref, and the
-eight existing commands are unchanged.
+**Status: v1.2.0 shipped, 2026-08-30.** Adds the `preflight` command (CLI and Action) on
+top of v1.1.0. All previous behaviour untouched: archive format, ref, and the eight
+existing commands are unchanged.
 
-Built 2026-08-30 on branch `feat/preflight`.
+Shipped via PR #1 (6/6 checks green on the PR head and again on the squash-merge commit
+`67542b8`), then `npm publish` (1.2.0 live on the registry, clean-dir install verified),
+`gh release create v1.2.0`, and `v1` force-moved to `67542b8`. The Marketplace listing
+picked the release up on its own within minutes, as LESSONS 2026-08-20 predicts; the
+listing page serves v1.2.0. Still no provenance attestation (local publish, same as 1.0.0
+and 1.1.0); Trusted Publishing remains the fix if it ever matters.
 
 ## What 1.2.0 adds
 
@@ -55,15 +60,10 @@ commits the archive has not covered (per-month count probes localize any run gap
   formatter is intentionally duplicated in `preflight.ts` the same way `n` already is in
   three files.
 
-## Shipping steps remaining
+## Next steps
 
-1. Push `feat/preflight`, open a PR, wait for the 6 checks green on the exact commit
-   (check-runs API, not `gh run watch`).
-2. Merge, then on main: `npm publish` (local authenticated session; still no provenance,
-   same as 1.0.0/1.1.0), `gh release create v1.2.0`, move the `v1` tag to the release
-   commit. The Marketplace listing updates itself on release (LESSONS 2026-08-20).
-3. Verify `npm view actions-attic@1.2.0` resolves (registry propagation lags) and the
-   Marketplace page shows v1.2.0.
+Nothing blocking. The late-September repost (below) is the remaining move, and it is
+deliberately parked until the deadline is imminent.
 
 ## Earlier history
 
