@@ -1,6 +1,6 @@
 {
   "name": "actions-attic",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Keep a permanent archive of a repository's GitHub Actions runs, checks and statuses before GitHub's 2026-10-01 retention change deletes them.",
   "keywords": [
     "github-actions",

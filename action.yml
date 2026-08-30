@@ -19,9 +19,17 @@ inputs:
     required: false
     default: ''
   mode:
-    description: 'auto (top up then continue the backfill), backfill, or incremental.'
+    description: 'auto (top up then continue the backfill), backfill, incremental, or preflight (report only).'
     required: false
     default: 'auto'
+  retention-days:
+    description: 'Preflight only: retention window override instead of reading it from the API.'
+    required: false
+    default: ''
+  fail-on-unarchived:
+    description: 'Preflight only: fail the step when at-risk records are not archived yet.'
+    required: false
+    default: 'false'
   backfill-months:
     description: 'How many months of history to walk backwards.'
     required: false
@@ -72,6 +80,14 @@ outputs:
     description: 'Web URL for browsing the archive commit, empty when nothing was committed.'
   source-repository:
     description: 'Repository whose history was read.'
+  retention-days:
+    description: 'Preflight only: the resolved retention window in days.'
+  retention-source:
+    description: 'Preflight only: where the window came from (flag, api, or default).'
+  unarchived-total:
+    description: 'Preflight only: at-risk records not yet in the archive.'
+  preflight-json:
+    description: 'Preflight only: the full preflight result as JSON.'
 
 runs:
   using: 'node24'

@@ -9,6 +9,7 @@ import { FsBackend, RefBackend, normalizeRef } from './backend.js';
 import { computeFlake, formatFlake } from './flake.js';
 import { buildIndex } from './index.js';
 import { assertMonth } from './months.js';
+import { formatPreflight, runPreflight } from './preflight.js';
 import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 
 const require = createRequire(import.meta.url);
@@ -29,6 +30,7 @@ COMMANDS
   backfill <owner/repo>      Walk history backwards only
   incremental <owner/repo>   Append new runs only
   pull <owner/repo>          Copy an archive ref down into a local directory
+  preflight <owner/repo>     What the 2026-10-01 retention change will delete, and what is archived
   build                      Build a SQLite index over the archive
   flake <workflow>           Flake rate for one workflow
   stats                      What the archive currently holds
@@ -44,8 +46,13 @@ FETCH OPTIONS (sync, backfill, incremental)
   --max-pages <n>            Page ceiling for an incremental catch-up (default: 50)
   --no-checks                Skip check runs
   --no-statuses              Skip commit statuses
-  --ref <ref>                Archive ref for \`pull\` (default: refs/attic/archive)
+  --ref <ref>                Archive ref for \`pull\` and \`preflight\` (default: refs/attic/archive)
   --api <url>                API base URL (default: https://api.github.com)
+
+PREFLIGHT OPTIONS
+  --retention-days <n>       Override the retention window instead of reading it from the API
+  --fail-on-unarchived       Exit 1 when anything at risk is not archived yet
+  --archive <dir>            Compare against a local archive directory instead of the archive ref
 
 READ OPTIONS
   --since <YYYY-MM>          Earliest month to include
@@ -57,6 +64,7 @@ READ OPTIONS
 
 EXAMPLES
   actions-attic sync cli/cli --archive ./attic --months 14
+  actions-attic preflight myorg/myrepo --fail-on-unarchived
   actions-attic pull myorg/myrepo --archive ./attic
   actions-attic build --archive ./attic
   actions-attic flake build-linux --since 2025-09 --archive ./attic
@@ -315,6 +323,54 @@ async function cmdPull(args: Args): Promise<number> {
   return 0;
 }
 
+/**
+ * What the retention change will delete and how much of it is archived. Reads
+ * the archive ref over the API like `pull` does, or a local directory when
+ * --archive is given, which may be empty: "nothing archived" is a real answer.
+ */
+async function cmdPreflight(args: Args): Promise<number> {
+  const { owner, repo } = requireRepo(args);
+  const retentionRaw = args.flags.get('retention-days');
+  const retentionDays = retentionRaw === undefined ? null : int(args, 'retention-days', 90, 1, 3650);
+  const api = new Api({
+    token: resolveToken(args),
+    maxRequests: int(args, 'max-requests', 800, 1, 1_000_000),
+    baseUrl: str(args, 'api', process.env.GITHUB_API_URL ?? 'https://api.github.com'),
+    log: (m) => process.stderr.write(`${m}\n`),
+    warn: (m) => process.stderr.write(`warning: ${m}\n`),
+  });
+
+  let archive: Archive;
+  let next: string;
+  const localDir = args.flags.get('archive');
+  if (localDir !== undefined) {
+    if (typeof localDir !== 'string') throw new UsageError('--archive needs a value');
+    const dir = resolve(localDir);
+    archive = await Archive.open(await FsBackend.open(dir), `${owner}/${repo}`);
+    next = `actions-attic backfill ${owner}/${repo} --archive ${display(dir)}`;
+  } else {
+    const ref = asUsage(() => normalizeRef(str(args, 'ref', 'refs/attic/archive')));
+    const backend = await RefBackend.open(api, owner, repo, ref);
+    if (backend.isNew) process.stderr.write(`${owner}/${repo} has no archive at ${ref} yet\n`);
+    archive = await Archive.open(backend, `${owner}/${repo}`);
+    next = `actions-attic backfill ${owner}/${repo}`;
+  }
+
+  const result = await runPreflight({
+    api,
+    archive,
+    owner,
+    repo,
+    retentionDays,
+    log: (m) => process.stderr.write(`${m}\n`),
+    warn: (m) => process.stderr.write(`warning: ${m}\n`),
+  });
+
+  if (args.flags.get('json') === true) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  else process.stdout.write(`${formatPreflight(result, next)}\n`);
+  return args.flags.get('fail-on-unarchived') === true && result.unarchived.total > 0 ? 1 : 0;
+}
+
 async function cmdBuild(args: Args): Promise<number> {
   const dir = resolve(str(args, 'archive', 'attic'));
   await openArchive(dir);
@@ -468,6 +524,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdSync(args, 'incremental');
     case 'pull':
       return cmdPull(args);
+    case 'preflight':
+      return cmdPreflight(args);
     case 'build':
       return cmdBuild(args);
     case 'flake':

@@ -1202,19 +1202,19 @@ var require_util = __commonJS({
       let key;
       let val;
       let kLen = 0;
-      for (let n2 = 0; n2 < headers.length; n2 += 2) {
-        key = headers[n2];
-        val = headers[n2 + 1];
+      for (let n3 = 0; n3 < headers.length; n3 += 2) {
+        key = headers[n3];
+        val = headers[n3 + 1];
         typeof key !== "string" && (key = key.toString());
         typeof val !== "string" && (val = val.toString("utf8"));
         kLen = key.length;
         if (kLen === 14 && key[7] === "-" && (key === "content-length" || key.toLowerCase() === "content-length")) {
           hasContentLength = true;
         } else if (kLen === 19 && key[7] === "-" && (key === "content-disposition" || key.toLowerCase() === "content-disposition")) {
-          contentDispositionIdx = n2 + 1;
+          contentDispositionIdx = n3 + 1;
         }
-        ret[n2] = key;
-        ret[n2 + 1] = val;
+        ret[n3] = key;
+        ret[n3 + 1] = val;
       }
       if (hasContentLength && contentDispositionIdx !== -1) {
         ret[contentDispositionIdx] = Buffer.from(ret[contentDispositionIdx]).toString("latin1");
@@ -3603,8 +3603,8 @@ var require_webidl = __commonJS({
       return new TypeError(`${message.header}: ${message.message}`);
     };
     webidl.errors.conversionFailed = function(context) {
-      const plural = context.types.length === 1 ? "" : " one of";
-      const message = `${context.argument} could not be converted to${plural}: ${context.types.join(", ")}.`;
+      const plural2 = context.types.length === 1 ? "" : " one of";
+      const message = `${context.argument} could not be converted to${plural2}: ${context.types.join(", ")}.`;
       return webidl.errors.exception({
         header: context.prefix,
         message
@@ -3726,9 +3726,9 @@ var require_webidl = __commonJS({
       }
       return x;
     };
-    webidl.util.IntegerPart = function(n2) {
-      const r = Math.floor(Math.abs(n2));
-      if (n2 < 0) {
+    webidl.util.IntegerPart = function(n3) {
+      const r = Math.floor(Math.abs(n3));
+      if (n3 < 0) {
         return -1 * r;
       }
       return r;
@@ -4900,12 +4900,12 @@ var require_file = __commonJS({
     var { webidl } = require_webidl();
     var FileLike = class _FileLike {
       constructor(blobLike, fileName, options = {}) {
-        const n2 = fileName;
+        const n3 = fileName;
         const t = options.type;
         const d = options.lastModified ?? Date.now();
         this[kState] = {
           blobLike,
-          name: n2,
+          name: n3,
           type: t,
           lastModified: d
         };
@@ -6485,9 +6485,9 @@ upgrade: ${upgrade}\r
         header += "connection: close\r\n";
       }
       if (Array.isArray(headers)) {
-        for (let n2 = 0; n2 < headers.length; n2 += 2) {
-          const key = headers[n2 + 0];
-          const val = headers[n2 + 1];
+        for (let n3 = 0; n3 < headers.length; n3 += 2) {
+          const key = headers[n3 + 0];
+          const val = headers[n3 + 1];
           if (Array.isArray(val)) {
             for (let i = 0; i < val.length; i++) {
               header += `${key}: ${val[i]}\r
@@ -7000,9 +7000,9 @@ var require_client_h2 = __commonJS({
         return false;
       }
       const headers = {};
-      for (let n2 = 0; n2 < reqHeaders.length; n2 += 2) {
-        const key = reqHeaders[n2 + 0];
-        const val = reqHeaders[n2 + 1];
+      for (let n3 = 0; n3 < reqHeaders.length; n3 += 2) {
+        const key = reqHeaders[n3 + 0];
+        const val = reqHeaders[n3 + 1];
         if (Array.isArray(val)) {
           for (let i = 0; i < val.length; i++) {
             if (headers[key]) {
@@ -9516,8 +9516,8 @@ var require_readable = __commonJS({
       if (state.bufferIndex) {
         const start = state.bufferIndex;
         const end = state.buffer.length;
-        for (let n2 = start; n2 < end; n2++) {
-          consumePush(consume2, state.buffer[n2]);
+        for (let n3 = start; n3 < end; n3++) {
+          consumePush(consume2, state.buffer[n3]);
         }
       } else {
         for (const chunk of state.buffer) {
@@ -11102,9 +11102,9 @@ var require_pluralizer = __commonJS({
       this: "these"
     };
     module2.exports = class Pluralizer {
-      constructor(singular, plural) {
+      constructor(singular, plural2) {
         this.singular = singular;
-        this.plural = plural;
+        this.plural = plural2;
       }
       pluralize(count) {
         const one = count === 1;
@@ -17528,34 +17528,34 @@ var require_receiver = __commonJS({
        * @param {number} n
        * @returns {Buffer}
        */
-      consume(n2) {
-        if (n2 > this.#byteOffset) {
+      consume(n3) {
+        if (n3 > this.#byteOffset) {
           throw new Error("Called consume() before buffers satiated.");
-        } else if (n2 === 0) {
+        } else if (n3 === 0) {
           return emptyBuffer;
         }
-        if (this.#buffers[0].length === n2) {
+        if (this.#buffers[0].length === n3) {
           this.#byteOffset -= this.#buffers[0].length;
           return this.#buffers.shift();
         }
-        const buffer = Buffer.allocUnsafe(n2);
+        const buffer = Buffer.allocUnsafe(n3);
         let offset = 0;
-        while (offset !== n2) {
+        while (offset !== n3) {
           const next = this.#buffers[0];
           const { length } = next;
-          if (length + offset === n2) {
+          if (length + offset === n3) {
             buffer.set(this.#buffers.shift(), offset);
             break;
-          } else if (length + offset > n2) {
-            buffer.set(next.subarray(0, n2 - offset), offset);
-            this.#buffers[0] = next.subarray(n2 - offset);
+          } else if (length + offset > n3) {
+            buffer.set(next.subarray(0, n3 - offset), offset);
+            this.#buffers[0] = next.subarray(n3 - offset);
             break;
           } else {
             buffer.set(this.#buffers.shift(), offset);
             offset += next.length;
           }
         }
-        this.#byteOffset -= n2;
+        this.#byteOffset -= n3;
         return buffer;
       }
       writeFragments(fragment) {
@@ -19373,8 +19373,8 @@ function describe(err) {
   }
   return String(err);
 }
-function truncate(s, n2) {
-  return s.length > n2 ? `${s.slice(0, n2)}\u2026` : s;
+function truncate(s, n3) {
+  return s.length > n3 ? `${s.slice(0, n3)}\u2026` : s;
 }
 var defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 var Api = class {
@@ -19538,6 +19538,26 @@ var Api = class {
     if (headers.get("retry-after")) return "secondary";
     return null;
   }
+  /**
+   * The artifact-and-log retention setting that governs runs, checks and
+   * statuses from 2026-10-01. Reading it needs `repo` scope on a classic PAT,
+   * so 403 and 404 return null and let the caller fall back to a default.
+   */
+  async getRetentionSettings(owner, repo) {
+    try {
+      const { data } = await this.request(
+        `/repos/${owner}/${repo}/actions/permissions/artifact-and-log-retention`
+      );
+      if (typeof data?.days !== "number") return null;
+      return {
+        days: data.days,
+        maximumAllowedDays: typeof data.maximum_allowed_days === "number" ? data.maximum_allowed_days : null
+      };
+    } catch (err) {
+      if (err instanceof HttpError && (err.status === 403 || err.status === 404)) return null;
+      throw err;
+    }
+  }
   /** Paginate a list endpoint. Partial pages already fetched stay in `opts.sink`. */
   async list(path, params, opts = {}) {
     const perPage = opts.perPage ?? 100;
@@ -19580,184 +19600,6 @@ function unwrap(data, key) {
   }
   return { items: [], total: null };
 }
-
-// src/backend.ts
-var import_node_crypto = require("node:crypto");
-var import_node_path = require("node:path");
-function gitBlobSha(content) {
-  const body = Buffer.from(content, "utf8");
-  return (0, import_node_crypto.createHash)("sha1").update(`blob ${body.length}\0`).update(body).digest("hex");
-}
-function normalizeRef(value) {
-  const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
-  if (!trimmed) throw new Error("ref must not be empty");
-  const ref = trimmed.startsWith("refs/") ? trimmed : `refs/heads/${trimmed}`;
-  if (ref.split("/").length < 3 || ref.split("/").some((part) => part === "")) {
-    throw new Error(`ref must look like refs/<namespace>/<name>, got "${value}"`);
-  }
-  return ref;
-}
-var RefBackend = class _RefBackend {
-  constructor(api, owner, repo, ref, opts = {}) {
-    this.api = api;
-    this.owner = owner;
-    this.repo = repo;
-    this.ref = ref;
-    this.opts = opts;
-  }
-  api;
-  owner;
-  repo;
-  ref;
-  opts;
-  tree = /* @__PURE__ */ new Map();
-  staged = /* @__PURE__ */ new Map();
-  cache = /* @__PURE__ */ new Map();
-  headSha = null;
-  treeSha = null;
-  loaded = false;
-  static async open(api, owner, repo, ref, opts) {
-    const backend = new _RefBackend(api, owner, repo, normalizeRef(ref), opts);
-    await backend.load();
-    return backend;
-  }
-  get base() {
-    return `/repos/${this.owner}/${this.repo}`;
-  }
-  /** `refs/attic/archive` addresses as `attic/archive` on the git ref endpoints. */
-  get refPath() {
-    return this.ref.replace(/^refs\//, "").split("/").map(encodeURIComponent).join("/");
-  }
-  async load() {
-    this.tree.clear();
-    this.cache.clear();
-    this.headSha = null;
-    this.treeSha = null;
-    try {
-      const ref = await this.api.request(
-        `${this.base}/git/ref/${this.refPath}`
-      );
-      this.headSha = ref.data.object.sha;
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 404) {
-        this.loaded = true;
-        return;
-      }
-      throw err;
-    }
-    const commit = await this.api.request(`${this.base}/git/commits/${this.headSha}`);
-    this.treeSha = commit.data.tree.sha;
-    const tree = await this.api.request(
-      `${this.base}/git/trees/${this.treeSha}`,
-      { params: { recursive: "1" } }
-    );
-    if (tree.data.truncated) {
-      this.opts.warn?.("archive tree came back truncated; some months may be re-fetched");
-    }
-    for (const entry of tree.data.tree) {
-      if (entry.type === "blob") this.tree.set(entry.path, entry.sha);
-    }
-    this.loaded = true;
-  }
-  /** True when the ref does not exist yet. */
-  get isNew() {
-    return this.loaded && this.headSha === null;
-  }
-  paths() {
-    return [.../* @__PURE__ */ new Set([...this.tree.keys(), ...this.staged.keys()])].sort();
-  }
-  async read(path) {
-    const staged = this.staged.get(path);
-    if (staged !== void 0) return staged;
-    if (this.cache.has(path)) return this.cache.get(path);
-    const sha = this.tree.get(path);
-    if (!sha) return null;
-    const blob = await this.api.request(`${this.base}/git/blobs/${sha}`);
-    const content = blob.data.encoding === "base64" ? Buffer.from(blob.data.content, "base64").toString("utf8") : blob.data.content;
-    this.cache.set(path, content);
-    return content;
-  }
-  write(path, content) {
-    this.staged.set(path, content);
-  }
-  async commit(message) {
-    return this.commitOnce(message, true);
-  }
-  async commitOnce(message, mayRetry) {
-    const pending = [...this.staged].filter(([path, content]) => this.tree.get(path) !== gitBlobSha(content));
-    if (pending.length === 0) {
-      this.staged.clear();
-      return null;
-    }
-    const blobs = [];
-    for (const [path, content] of pending) {
-      const res = await this.api.request(`${this.base}/git/blobs`, {
-        method: "POST",
-        body: { content: Buffer.from(content, "utf8").toString("base64"), encoding: "base64" }
-      });
-      blobs.push({ path, sha: res.data.sha });
-    }
-    const treeRes = await this.api.request(`${this.base}/git/trees`, {
-      method: "POST",
-      body: {
-        ...this.treeSha ? { base_tree: this.treeSha } : {},
-        tree: blobs.map((b) => ({ path: b.path, mode: "100644", type: "blob", sha: b.sha }))
-      }
-    });
-    if (treeRes.data.sha === this.treeSha) {
-      this.staged.clear();
-      return null;
-    }
-    const commitRes = await this.api.request(`${this.base}/git/commits`, {
-      method: "POST",
-      body: {
-        message,
-        tree: treeRes.data.sha,
-        parents: this.headSha ? [this.headSha] : [],
-        ...this.opts.committer ? { author: this.opts.committer, committer: this.opts.committer } : {}
-      }
-    });
-    const newHead = commitRes.data.sha;
-    try {
-      if (this.headSha) {
-        await this.api.request(`${this.base}/git/refs/${this.refPath}`, {
-          method: "PATCH",
-          body: { sha: newHead }
-        });
-      } else {
-        await this.api.request(`${this.base}/git/refs`, {
-          method: "POST",
-          body: { ref: this.ref, sha: newHead }
-        });
-      }
-    } catch (err) {
-      const raced = err instanceof HttpError && (err.status === 409 || err.status === 422);
-      if (raced && mayRetry) {
-        this.opts.warn?.(`${this.ref} moved under us (${err.status}); reloading and retrying once`);
-        const staged = new Map(this.staged);
-        await this.load();
-        this.staged = staged;
-        return this.commitOnce(message, false);
-      }
-      if (raced) {
-        throw new Error(
-          `could not update ${this.ref} after one retry: ${err.message}. Another job is probably writing the archive at the same time; re-run once it finishes.`
-        );
-      }
-      throw err;
-    }
-    for (const b of blobs) this.tree.set(b.path, b.sha);
-    for (const [path, content] of this.staged) this.cache.set(path, content);
-    this.staged.clear();
-    this.headSha = newHead;
-    this.treeSha = treeRes.data.sha;
-    return { changed: blobs.map((b) => b.path).sort(), sha: newHead };
-  }
-  describe() {
-    return `${this.owner}/${this.repo}@${this.ref}`;
-  }
-};
-var joinPath = import_node_path.posix.join;
 
 // src/months.ts
 var MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -20092,6 +19934,184 @@ var Archive = class _Archive {
   }
 };
 
+// src/backend.ts
+var import_node_crypto = require("node:crypto");
+var import_node_path = require("node:path");
+function gitBlobSha(content) {
+  const body = Buffer.from(content, "utf8");
+  return (0, import_node_crypto.createHash)("sha1").update(`blob ${body.length}\0`).update(body).digest("hex");
+}
+function normalizeRef(value) {
+  const trimmed = value.trim().replace(/^\/+|\/+$/g, "");
+  if (!trimmed) throw new Error("ref must not be empty");
+  const ref = trimmed.startsWith("refs/") ? trimmed : `refs/heads/${trimmed}`;
+  if (ref.split("/").length < 3 || ref.split("/").some((part) => part === "")) {
+    throw new Error(`ref must look like refs/<namespace>/<name>, got "${value}"`);
+  }
+  return ref;
+}
+var RefBackend = class _RefBackend {
+  constructor(api, owner, repo, ref, opts = {}) {
+    this.api = api;
+    this.owner = owner;
+    this.repo = repo;
+    this.ref = ref;
+    this.opts = opts;
+  }
+  api;
+  owner;
+  repo;
+  ref;
+  opts;
+  tree = /* @__PURE__ */ new Map();
+  staged = /* @__PURE__ */ new Map();
+  cache = /* @__PURE__ */ new Map();
+  headSha = null;
+  treeSha = null;
+  loaded = false;
+  static async open(api, owner, repo, ref, opts) {
+    const backend = new _RefBackend(api, owner, repo, normalizeRef(ref), opts);
+    await backend.load();
+    return backend;
+  }
+  get base() {
+    return `/repos/${this.owner}/${this.repo}`;
+  }
+  /** `refs/attic/archive` addresses as `attic/archive` on the git ref endpoints. */
+  get refPath() {
+    return this.ref.replace(/^refs\//, "").split("/").map(encodeURIComponent).join("/");
+  }
+  async load() {
+    this.tree.clear();
+    this.cache.clear();
+    this.headSha = null;
+    this.treeSha = null;
+    try {
+      const ref = await this.api.request(
+        `${this.base}/git/ref/${this.refPath}`
+      );
+      this.headSha = ref.data.object.sha;
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 404) {
+        this.loaded = true;
+        return;
+      }
+      throw err;
+    }
+    const commit = await this.api.request(`${this.base}/git/commits/${this.headSha}`);
+    this.treeSha = commit.data.tree.sha;
+    const tree = await this.api.request(
+      `${this.base}/git/trees/${this.treeSha}`,
+      { params: { recursive: "1" } }
+    );
+    if (tree.data.truncated) {
+      this.opts.warn?.("archive tree came back truncated; some months may be re-fetched");
+    }
+    for (const entry of tree.data.tree) {
+      if (entry.type === "blob") this.tree.set(entry.path, entry.sha);
+    }
+    this.loaded = true;
+  }
+  /** True when the ref does not exist yet. */
+  get isNew() {
+    return this.loaded && this.headSha === null;
+  }
+  paths() {
+    return [.../* @__PURE__ */ new Set([...this.tree.keys(), ...this.staged.keys()])].sort();
+  }
+  async read(path) {
+    const staged = this.staged.get(path);
+    if (staged !== void 0) return staged;
+    if (this.cache.has(path)) return this.cache.get(path);
+    const sha = this.tree.get(path);
+    if (!sha) return null;
+    const blob = await this.api.request(`${this.base}/git/blobs/${sha}`);
+    const content = blob.data.encoding === "base64" ? Buffer.from(blob.data.content, "base64").toString("utf8") : blob.data.content;
+    this.cache.set(path, content);
+    return content;
+  }
+  write(path, content) {
+    this.staged.set(path, content);
+  }
+  async commit(message) {
+    return this.commitOnce(message, true);
+  }
+  async commitOnce(message, mayRetry) {
+    const pending = [...this.staged].filter(([path, content]) => this.tree.get(path) !== gitBlobSha(content));
+    if (pending.length === 0) {
+      this.staged.clear();
+      return null;
+    }
+    const blobs = [];
+    for (const [path, content] of pending) {
+      const res = await this.api.request(`${this.base}/git/blobs`, {
+        method: "POST",
+        body: { content: Buffer.from(content, "utf8").toString("base64"), encoding: "base64" }
+      });
+      blobs.push({ path, sha: res.data.sha });
+    }
+    const treeRes = await this.api.request(`${this.base}/git/trees`, {
+      method: "POST",
+      body: {
+        ...this.treeSha ? { base_tree: this.treeSha } : {},
+        tree: blobs.map((b) => ({ path: b.path, mode: "100644", type: "blob", sha: b.sha }))
+      }
+    });
+    if (treeRes.data.sha === this.treeSha) {
+      this.staged.clear();
+      return null;
+    }
+    const commitRes = await this.api.request(`${this.base}/git/commits`, {
+      method: "POST",
+      body: {
+        message,
+        tree: treeRes.data.sha,
+        parents: this.headSha ? [this.headSha] : [],
+        ...this.opts.committer ? { author: this.opts.committer, committer: this.opts.committer } : {}
+      }
+    });
+    const newHead = commitRes.data.sha;
+    try {
+      if (this.headSha) {
+        await this.api.request(`${this.base}/git/refs/${this.refPath}`, {
+          method: "PATCH",
+          body: { sha: newHead }
+        });
+      } else {
+        await this.api.request(`${this.base}/git/refs`, {
+          method: "POST",
+          body: { ref: this.ref, sha: newHead }
+        });
+      }
+    } catch (err) {
+      const raced = err instanceof HttpError && (err.status === 409 || err.status === 422);
+      if (raced && mayRetry) {
+        this.opts.warn?.(`${this.ref} moved under us (${err.status}); reloading and retrying once`);
+        const staged = new Map(this.staged);
+        await this.load();
+        this.staged = staged;
+        return this.commitOnce(message, false);
+      }
+      if (raced) {
+        throw new Error(
+          `could not update ${this.ref} after one retry: ${err.message}. Another job is probably writing the archive at the same time; re-run once it finishes.`
+        );
+      }
+      throw err;
+    }
+    for (const b of blobs) this.tree.set(b.path, b.sha);
+    for (const [path, content] of this.staged) this.cache.set(path, content);
+    this.staged.clear();
+    this.headSha = newHead;
+    this.treeSha = treeRes.data.sha;
+    return { changed: blobs.map((b) => b.path).sort(), sha: newHead };
+  }
+  describe() {
+    return `${this.owner}/${this.repo}@${this.ref}`;
+  }
+};
+var joinPath = import_node_path.posix.join;
+
 // src/collect.ts
 var SEARCH_CAP = 1e3;
 function makeContext(init) {
@@ -20326,6 +20346,195 @@ function addResults(a, b) {
   return { runs: a.runs + b.runs, checks: a.checks + b.checks, statuses: a.statuses + b.statuses };
 }
 
+// src/preflight.ts
+var DELETION_DATE = "2026-10-01";
+var DEFAULT_RETENTION_DAYS = 90;
+var PUBLIC_MAX_RETENTION_DAYS = 90;
+function toInstant(ms) {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+async function countRuns(api, owner, repo, created) {
+  const { data } = await api.request(`/repos/${owner}/${repo}/actions/runs`, {
+    params: { created, per_page: 1 }
+  });
+  return typeof data?.total_count === "number" ? data.total_count : 0;
+}
+function outOfBudget(api) {
+  return new Error(
+    `preflight ran out of request budget after ${api.requests} requests${api.exhaustReason() ? ` (${api.exhaustReason()})` : ""}. Raise --max-requests, or run \`actions-attic backfill\` first so preflight can count from the archive instead.`
+  );
+}
+async function runPreflight(opts) {
+  try {
+    return await preflight(opts);
+  } catch (err) {
+    if (err instanceof BudgetExhausted) throw outOfBudget(opts.api);
+    throw err;
+  }
+}
+async function preflight(opts) {
+  const log = opts.log ?? (() => {
+  });
+  const warn = opts.warn ?? (() => {
+  });
+  const { api, archive, owner, repo } = opts;
+  const now = opts.now ?? /* @__PURE__ */ new Date();
+  const repoInfo = await api.request(`/repos/${owner}/${repo}`);
+  const isPublic = repoInfo.data?.visibility === "public";
+  const settings = await api.getRetentionSettings(owner, repo);
+  let retentionDays;
+  let retentionSource;
+  if (opts.retentionDays != null) {
+    retentionDays = opts.retentionDays;
+    retentionSource = "flag";
+  } else if (settings) {
+    retentionDays = settings.days;
+    retentionSource = "api";
+  } else {
+    retentionDays = DEFAULT_RETENTION_DAYS;
+    retentionSource = "default";
+    warn(
+      `the retention settings endpoint was not readable with this token (classic PATs need the repo scope); assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`
+    );
+  }
+  if (settings?.maximumAllowedDays != null && retentionDays > settings.maximumAllowedDays) {
+    log(`${retentionDays} days is above this repository's maximum of ${settings.maximumAllowedDays}; using the maximum`);
+    retentionDays = settings.maximumAllowedDays;
+  }
+  if (isPublic && retentionDays > PUBLIC_MAX_RETENTION_DAYS) {
+    log(`public repositories cap at ${PUBLIC_MAX_RETENTION_DAYS} days; clamping ${retentionDays}`);
+    retentionDays = PUBLIC_MAX_RETENTION_DAYS;
+  }
+  const cutoffIso = toInstant(now.getTime() - retentionDays * 864e5);
+  const cutoffMonth = monthOf(cutoffIso);
+  const ctx = makeContext({ api, archive, owner, repo, skipChecks: false, skipStatuses: false, log, warn });
+  const archived = { runs: 0, checks: 0, statuses: 0 };
+  const archivedRunIds = /* @__PURE__ */ new Map();
+  const pendingShas = /* @__PURE__ */ new Map();
+  const archiveMonths = archive.months().filter((m) => m <= cutoffMonth);
+  for (const month of archiveMonths) {
+    const ids = /* @__PURE__ */ new Set();
+    const done = await archive.shasDone(month);
+    for (const run2 of await archive.read("runs", month)) {
+      if (run2.created_at >= cutoffIso) continue;
+      ids.add(run2.id);
+      if (run2.head_sha && !done.has(run2.head_sha) && !pendingShas.has(run2.head_sha)) {
+        pendingShas.set(run2.head_sha, month);
+      }
+    }
+    archivedRunIds.set(month, ids);
+    archived.runs += ids.size;
+    for (const check of await archive.read("checks", month)) {
+      const date = check.started_at ?? check.completed_at;
+      if (!date || date < cutoffIso) archived.checks++;
+    }
+    for (const status of await archive.read("statuses", month)) {
+      if (!status.created_at || status.created_at < cutoffIso) archived.statuses++;
+    }
+  }
+  const atRiskRuns = await countRuns(api, owner, repo, `<${cutoffIso}`);
+  let unarchivedRuns = 0;
+  if (atRiskRuns !== archived.runs) {
+    const repoCreated = repoInfo.data?.created_at;
+    const candidates = [...archiveMonths];
+    if (repoCreated) candidates.push(monthOf(repoCreated));
+    const first = candidates.length ? candidates.reduce((a, b) => a < b ? a : b) : cutoffMonth;
+    const preScope = first > "0000-01" ? await countRuns(api, owner, repo, `<${first}-01T00:00:00Z`) : 0;
+    if (preScope > 0) {
+      warn(`${preScope} runs predate ${first}; counting them as unarchived without their checks and statuses`);
+      unarchivedRuns += preScope;
+    }
+    for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) {
+      const month = indexToMonth(i);
+      const ids = archivedRunIds.get(month) ?? /* @__PURE__ */ new Set();
+      const window = monthWindow(month);
+      const end = month === cutoffMonth ? toInstant(Date.parse(cutoffIso) - 1e3) : `${window.end}T23:59:59Z`;
+      const remote = await countRuns(api, owner, repo, `${window.start}T00:00:00Z..${end}`);
+      if (remote === ids.size) continue;
+      const listed = [];
+      const res = await captureWindow(ctx, window, {
+        store: async (batch) => {
+          listed.push(...batch);
+        }
+      });
+      if (!res.complete) throw outOfBudget(api);
+      const done = await archive.shasDone(month);
+      for (const run2 of listed) {
+        if (run2.created_at >= cutoffIso || ids.has(run2.id)) continue;
+        ids.add(run2.id);
+        unarchivedRuns++;
+        if (run2.head_sha && !done.has(run2.head_sha) && !pendingShas.has(run2.head_sha)) {
+          pendingShas.set(run2.head_sha, month);
+        }
+      }
+    }
+  }
+  const fresh = { runs: 0, checks: 0, statuses: 0 };
+  if (pendingShas.size > 0) {
+    log(`fetching checks/statuses for ${pendingShas.size} commit${pendingShas.size === 1 ? "" : "s"} not yet in the archive`);
+    const res = await captureShas(ctx, [...pendingShas.keys()]);
+    if (!res.complete) throw outOfBudget(api);
+    for (const check of res.checks) {
+      const date = check.started_at ?? check.completed_at;
+      if (date && date >= cutoffIso) continue;
+      const month = date ? monthOf(date) : pendingShas.get(check.head_sha);
+      if (!(await archive.keys("checks", month)).has(String(check.id))) fresh.checks++;
+    }
+    for (const status of res.statuses) {
+      if (status.created_at && status.created_at >= cutoffIso) continue;
+      const month = status.created_at ? monthOf(status.created_at) : pendingShas.get(status.head_sha);
+      if (!(await archive.keys("statuses", month)).has(String(status.id))) fresh.statuses++;
+    }
+  }
+  const archivedRuns = Math.max(0, atRiskRuns - unarchivedRuns);
+  const unarchived = {
+    runs: unarchivedRuns,
+    checks: fresh.checks,
+    statuses: fresh.statuses,
+    total: unarchivedRuns + fresh.checks + fresh.statuses
+  };
+  return {
+    retentionDays,
+    retentionSource,
+    cutoffIso,
+    deletionDate: DELETION_DATE,
+    atRisk: {
+      runs: atRiskRuns,
+      checks: archived.checks + fresh.checks,
+      statuses: archived.statuses + fresh.statuses
+    },
+    archived: { runs: archivedRuns, checks: archived.checks, statuses: archived.statuses },
+    unarchived
+  };
+}
+var n = (value) => value.toLocaleString("en-US");
+var plural = (count, one, many = `${one}s`) => `${n(count)} ${count === 1 ? one : many}`;
+function tally(t) {
+  return `${plural(t.runs, "run")}, ${plural(t.checks, "check run")}, ${plural(t.statuses, "status", "statuses")}`;
+}
+var SOURCES = {
+  flag: "--retention-days",
+  api: "repository setting",
+  default: "GitHub default"
+};
+function formatPreflight(result, nextCommand) {
+  const lines = [
+    `retention window: ${plural(result.retentionDays, "day")} (${SOURCES[result.retentionSource]})`,
+    `from ${result.deletionDate}, records created before ${result.cutoffIso} are deleted`,
+    `at risk: ${tally(result.atRisk)}`,
+    `already archived: ${tally(result.archived)}`
+  ];
+  if (result.unarchived.total > 0) {
+    lines.push(`Unarchived and at risk: ${tally(result.unarchived)}. Run: ${nextCommand}`);
+  } else {
+    const total = result.archived.runs + result.archived.checks + result.archived.statuses;
+    lines.push(
+      total > 0 ? `Nothing at risk. ${plural(total, "record")} already in the attic.` : "Nothing at risk. No records are older than the cutoff."
+    );
+  }
+  return lines.join("\n");
+}
+
 // src/backfill.ts
 function remainingMonths(manifest, months, now = /* @__PURE__ */ new Date()) {
   const targets = monthsBack(currentMonth(now), months);
@@ -20400,16 +20609,16 @@ async function backfill(ctx, opts) {
     stoppedBecause
   };
 }
-var n = (value) => value.toLocaleString("en-US");
+var n2 = (value) => value.toLocaleString("en-US");
 function backfillMessage(result) {
   if (result.monthsCompleted.length > 0) {
     const months = [...result.monthsCompleted].sort();
     const span = months.length === 1 ? months[0] : `${months[0]}..${months[months.length - 1]}`;
-    return `attic: backfill ${span} (${n(result.added.runs)} runs)`;
+    return `attic: backfill ${span} (${n2(result.added.runs)} runs)`;
   }
   if (result.added.runs > 0 || result.added.checks > 0) {
     const month = result.monthsTouched[result.monthsTouched.length - 1] ?? "history";
-    return `attic: backfill ${month} in progress (${n(result.added.runs)} runs)`;
+    return `attic: backfill ${month} in progress (${n2(result.added.runs)} runs)`;
   }
   return null;
 }
@@ -20574,8 +20783,8 @@ async function run() {
     return;
   }
   const mode = input("mode", "auto");
-  if (!MODES.includes(mode)) {
-    setFailed(`input "mode" must be one of ${MODES.join(", ")}, got "${mode}"`);
+  if (mode !== "preflight" && !MODES.includes(mode)) {
+    setFailed(`input "mode" must be one of ${MODES.join(", ")}, preflight, got "${mode}"`);
     return;
   }
   const host = process.env.GITHUB_REPOSITORY ?? "";
@@ -20610,6 +20819,10 @@ async function run() {
     warn: (m) => warning(m)
   });
   if (backend.isNew) info(`${ref} does not exist yet; this run will create it`);
+  if (mode === "preflight") {
+    await preflightRun(api, backend, owner, repo);
+    return;
+  }
   const summary2 = await runArchive({
     api,
     backend,
@@ -20648,7 +20861,7 @@ async function run() {
     );
   }
   const totals = summary2.archive.manifest.counts;
-  const n2 = (value) => value.toLocaleString("en-US");
+  const n3 = (value) => value.toLocaleString("en-US");
   const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""}. The next run continues from here.`;
   await summary.addHeading(`actions-attic: ${owner}/${repo}`, 3).addRaw(
     summary2.commit ? `Committed \`${summary2.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ""}` : `Nothing new on \`${ref}\`; no commit made.`,
@@ -20659,10 +20872,55 @@ async function run() {
       { data: "new this run", header: true },
       { data: "total archived", header: true }
     ],
-    ["workflow runs", n2(summary2.runs), n2(totals.runs)],
-    ["check runs", n2(summary2.checks), n2(totals.checks)],
-    ["commit statuses", n2(summary2.statuses), n2(totals.statuses)]
-  ]).addRaw(`${state} ${n2(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`, true).write();
+    ["workflow runs", n3(summary2.runs), n3(totals.runs)],
+    ["check runs", n3(summary2.checks), n3(totals.checks)],
+    ["commit statuses", n3(summary2.statuses), n3(totals.statuses)]
+  ]).addRaw(`${state} ${n3(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`, true).write();
+}
+async function preflightRun(api, backend, owner, repo) {
+  const retentionRaw = getInput("retention-days").trim();
+  const retentionDays = retentionRaw === "" ? null : intInput("retention-days", 90, 1, 3650);
+  const failOn = boolInput("fail-on-unarchived");
+  const archive = await Archive.open(backend, `${owner}/${repo}`);
+  const result = await runPreflight({
+    api,
+    archive,
+    owner,
+    repo,
+    retentionDays,
+    log: (m) => info(m),
+    warn: (m) => warning(m)
+  });
+  setOutput("retention-days", result.retentionDays);
+  setOutput("retention-source", result.retentionSource);
+  setOutput("unarchived-total", result.unarchived.total);
+  setOutput("preflight-json", JSON.stringify(result));
+  const next = "run this workflow with mode auto or backfill until the backfill completes";
+  info(formatPreflight(result, next));
+  await writePreflightSummary(result, api.requests);
+  if (failOn && result.unarchived.total > 0) {
+    setFailed(
+      `${result.unarchived.total.toLocaleString("en-US")} at-risk records are not archived; ${next}.`
+    );
+  }
+}
+async function writePreflightSummary(result, requests) {
+  const n3 = (value) => value.toLocaleString("en-US");
+  const verdict = result.unarchived.total > 0 ? `**${n3(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.` : "Everything at risk is already in the attic.";
+  await summary.addHeading("actions-attic preflight", 3).addRaw(
+    `Retention window: ${n3(result.retentionDays)} days (${result.retentionSource}). From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
+    true
+  ).addBreak().addTable([
+    [
+      { data: "record type", header: true },
+      { data: "at risk", header: true },
+      { data: "archived", header: true },
+      { data: "unarchived", header: true }
+    ],
+    ["workflow runs", n3(result.atRisk.runs), n3(result.archived.runs), n3(result.unarchived.runs)],
+    ["check runs", n3(result.atRisk.checks), n3(result.archived.checks), n3(result.unarchived.checks)],
+    ["commit statuses", n3(result.atRisk.statuses), n3(result.archived.statuses), n3(result.unarchived.statuses)]
+  ]).addRaw(`${n3(requests)} API request${requests === 1 ? "" : "s"} used.`, true).write();
 }
 run().catch((err) => {
   if (err instanceof BudgetExhausted) {

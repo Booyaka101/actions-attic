@@ -80,6 +80,11 @@ export interface ListOptions<T> {
   sink?: T[];
 }
 
+export interface RetentionSettings {
+  days: number;
+  maximumAllowedDays: number | null;
+}
+
 export interface ListResult<T> {
   items: T[];
   totalCount: number;
@@ -274,6 +279,27 @@ export class Api {
     if (/secondary rate limit/i.test(body)) return 'secondary';
     if (headers.get('retry-after')) return 'secondary';
     return null;
+  }
+
+  /**
+   * The artifact-and-log retention setting that governs runs, checks and
+   * statuses from 2026-10-01. Reading it needs `repo` scope on a classic PAT,
+   * so 403 and 404 return null and let the caller fall back to a default.
+   */
+  async getRetentionSettings(owner: string, repo: string): Promise<RetentionSettings | null> {
+    try {
+      const { data } = await this.request<{ days?: unknown; maximum_allowed_days?: unknown }>(
+        `/repos/${owner}/${repo}/actions/permissions/artifact-and-log-retention`,
+      );
+      if (typeof data?.days !== 'number') return null;
+      return {
+        days: data.days,
+        maximumAllowedDays: typeof data.maximum_allowed_days === 'number' ? data.maximum_allowed_days : null,
+      };
+    } catch (err) {
+      if (err instanceof HttpError && (err.status === 403 || err.status === 404)) return null;
+      throw err;
+    }
   }
 
   /** Paginate a list endpoint. Partial pages already fetched stay in `opts.sink`. */
