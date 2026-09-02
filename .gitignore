@@ -13,3 +13,6 @@ scratch/
 
 # Outreach drafts are working notes, not part of the package.
 docs/*-draft.md
+
+# Local build notes, not for the public repo
+PROGRESS.md
