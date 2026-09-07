@@ -1,10 +1,10 @@
-/** Month-bucket arithmetic for the backfill windows. All dates are UTC `YYYY-MM-DD`. */
+/** Month-bucket arithmetic for the backfill windows. Everything is UTC. */
 
 export type Month = string; // YYYY-MM
 
 export interface Window {
-  start: string; // YYYY-MM-DD inclusive
-  end: string; // YYYY-MM-DD inclusive
+  start: string; // YYYY-MM-DD, or an ISO instant once split below a day, inclusive
+  end: string; // YYYY-MM-DD, or an ISO instant once split below a day, inclusive
 }
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -96,17 +96,50 @@ export function daysBetween(start: string, end: string): number {
   return Math.round((toUtc(end) - toUtc(start)) / DAY) + 1;
 }
 
+const SECOND = 1000;
+
+/** A window bound is either a whole day (`YYYY-MM-DD`) or an instant, once split below a day. */
+function isInstant(bound: string): boolean {
+  return bound.length > 10;
+}
+
+function startMs(bound: string): number {
+  return isInstant(bound) ? Date.parse(bound) : toUtc(bound);
+}
+
+/** A date bound covers the whole day, so its end is the last second of it. */
+function endMs(bound: string): number {
+  return isInstant(bound) ? Date.parse(bound) : toUtc(bound) + DAY - SECOND;
+}
+
+function toInstant(ms: number): string {
+  return new Date(ms).toISOString().replace('.000Z', 'Z');
+}
+
 /**
- * Halve a window. Returns null when it is already a single day, which is the
- * point where the API's 1,000-result cap can no longer be worked around.
+ * Halve a window. Above a day it halves on the date, below one it halves on the
+ * second: `created` honours full instants, and a repository doing more than
+ * 1,000 runs a day is otherwise capped at 1,000 for that whole day. Returns null
+ * only for a one-second window, where the cap really is irreducible.
  */
 export function splitWindow(w: Window): [Window, Window] | null {
-  const span = daysBetween(w.start, w.end);
-  if (span < 2) return null;
-  const firstEnd = addDays(w.start, Math.floor(span / 2) - 1);
+  if (!isInstant(w.start) && !isInstant(w.end)) {
+    const span = daysBetween(w.start, w.end);
+    if (span >= 2) {
+      const firstEnd = addDays(w.start, Math.floor(span / 2) - 1);
+      return [
+        { start: w.start, end: firstEnd },
+        { start: addDays(firstEnd, 1), end: w.end },
+      ];
+    }
+  }
+  const start = startMs(w.start);
+  const end = endMs(w.end);
+  if (end - start < SECOND) return null;
+  const mid = start + Math.floor((end - start) / 2 / SECOND) * SECOND;
   return [
-    { start: w.start, end: firstEnd },
-    { start: addDays(firstEnd, 1), end: w.end },
+    { start: toInstant(start), end: toInstant(mid) },
+    { start: toInstant(mid + SECOND), end: toInstant(end) },
   ];
 }
 

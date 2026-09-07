@@ -19662,13 +19662,37 @@ function addDays(date, days) {
 function daysBetween(start, end) {
   return Math.round((toUtc(end) - toUtc(start)) / DAY) + 1;
 }
+var SECOND = 1e3;
+function isInstant(bound) {
+  return bound.length > 10;
+}
+function startMs(bound) {
+  return isInstant(bound) ? Date.parse(bound) : toUtc(bound);
+}
+function endMs(bound) {
+  return isInstant(bound) ? Date.parse(bound) : toUtc(bound) + DAY - SECOND;
+}
+function toInstant(ms) {
+  return new Date(ms).toISOString().replace(".000Z", "Z");
+}
 function splitWindow(w) {
-  const span = daysBetween(w.start, w.end);
-  if (span < 2) return null;
-  const firstEnd = addDays(w.start, Math.floor(span / 2) - 1);
+  if (!isInstant(w.start) && !isInstant(w.end)) {
+    const span = daysBetween(w.start, w.end);
+    if (span >= 2) {
+      const firstEnd = addDays(w.start, Math.floor(span / 2) - 1);
+      return [
+        { start: w.start, end: firstEnd },
+        { start: addDays(firstEnd, 1), end: w.end }
+      ];
+    }
+  }
+  const start = startMs(w.start);
+  const end = endMs(w.end);
+  if (end - start < SECOND) return null;
+  const mid = start + Math.floor((end - start) / 2 / SECOND) * SECOND;
   return [
-    { start: w.start, end: firstEnd },
-    { start: addDays(firstEnd, 1), end: w.end }
+    { start: toInstant(start), end: toInstant(mid) },
+    { start: toInstant(mid + SECOND), end: toInstant(end) }
   ];
 }
 function formatWindow(w) {
@@ -20350,7 +20374,7 @@ function addResults(a, b) {
 var DELETION_DATE = "2026-10-01";
 var DEFAULT_RETENTION_DAYS = 90;
 var PUBLIC_MAX_RETENTION_DAYS = 90;
-function toInstant(ms) {
+function toInstant2(ms) {
   return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 async function countRuns(api, owner, repo, created) {
@@ -20405,7 +20429,7 @@ async function preflight(opts) {
     log(`public repositories cap at ${PUBLIC_MAX_RETENTION_DAYS} days; clamping ${retentionDays}`);
     retentionDays = PUBLIC_MAX_RETENTION_DAYS;
   }
-  const cutoffIso = toInstant(now.getTime() - retentionDays * 864e5);
+  const cutoffIso = toInstant2(now.getTime() - retentionDays * 864e5);
   const cutoffMonth = monthOf(cutoffIso);
   const ctx = makeContext({ api, archive, owner, repo, skipChecks: false, skipStatuses: false, log, warn });
   const archived = { runs: 0, checks: 0, statuses: 0 };
@@ -20448,7 +20472,7 @@ async function preflight(opts) {
       const month = indexToMonth(i);
       const ids = archivedRunIds.get(month) ?? /* @__PURE__ */ new Set();
       const window = monthWindow(month);
-      const end = month === cutoffMonth ? toInstant(Date.parse(cutoffIso) - 1e3) : `${window.end}T23:59:59Z`;
+      const end = month === cutoffMonth ? toInstant2(Date.parse(cutoffIso) - 1e3) : `${window.end}T23:59:59Z`;
       const remote = await countRuns(api, owner, repo, `${window.start}T00:00:00Z..${end}`);
       if (remote === ids.size) continue;
       const listed = [];

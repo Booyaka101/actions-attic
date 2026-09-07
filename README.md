@@ -261,7 +261,7 @@ Outputs: `runs-added`, `checks-added`, `statuses-added`, `committed`, `commit-sh
 
 ## How it stays inside the rate limit
 
-`GET /actions/runs` returns at most 1,000 results per search when filtered by `created`, so the backfill windows by month and halves any window that reports 1,000 or more, recursively, down to a single day. Every response's `x-ratelimit-remaining` and `x-ratelimit-reset` are read, and the walk stops cleanly at `max-requests` or when the live limit gets close.
+`GET /actions/runs` returns at most 1,000 results per search when filtered by `created`, so the backfill windows by month and halves any window that reports 1,000 or more, recursively. `created` accepts full instants, not just dates, so the halving carries on below a day when it has to: a repository doing 12,000 runs in a day is walked as sub-day windows rather than truncated at 1,000. Every response's `x-ratelimit-remaining` and `x-ratelimit-reset` are read, and the walk stops cleanly at `max-requests` or when the live limit gets close.
 
 Progress is checkpointed at three levels, so no work is ever repeated and none is lost:
 
@@ -305,7 +305,7 @@ The JSONL is plain text, so `grep`, `jq` and `git log` work on it directly. That
 - **Single repository per archive.** No org-wide rollup.
 - **No log text.** Job logs are a much larger retention problem and are out of scope; this archives the run, check and status metadata.
 - **No artifacts.**
-- A single day with 1,000 or more runs cannot be fully enumerated. GitHub will not serve past that cap for one search. actions-attic warns and takes the 1,000 it can get.
+- The 1,000-result search cap is worked around by halving the window, down to the second if a day needs it. Only more than 1,000 runs inside a single second is beyond reach; that warns and takes the 1,000 it can get.
 - Statuses need pull access. If the token cannot read them the run warns once and carries on with runs and checks.
 - The backfill only reaches as far back as GitHub still has data. Run it **before** 1 October 2026 and you keep what would otherwise be deleted; run it after and you get whatever survived your retention setting.
 - Data added to the archive is never removed by this tool. Deleting the branch deletes the archive.

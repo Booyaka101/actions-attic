@@ -74,7 +74,7 @@ test('a window under the cap is walked whole', async () => {
   }
 });
 
-test('a single day over the cap is reported instead of splitting forever', async () => {
+test('a single day over the cap is split on the second, not truncated', async () => {
   const dir = await scratch();
   try {
     const runs = makeRuns({ month: '2026-03', count: 1200, days: 1 });
@@ -83,8 +83,16 @@ test('a single day over the cap is reported instead of splitting forever', async
     const warnings = [];
     ctx.warn = (m) => warnings.push(m);
     const result = await captureWindow(ctx, monthWindow('2026-03'));
-    assert.ok(result.windows.includes('2026-03-01..2026-03-01'));
-    assert.ok(warnings.some((w) => /single day/.test(w)), warnings.join('\n'));
+    // The raw list over-counts: a capped probe keeps the page it already paid
+    // for, and the sub-window refetches it. Dedupe is the archive's job.
+    assert.equal(new Set(result.runs.map((r) => r.id)).size, 1200, 'every run of an over-cap day is captured');
+    // The busy day is walked as sub-day windows; the rest of the month is not.
+    assert.ok(
+      result.windows.some((w) => w.startsWith('2026-03-01T')),
+      result.windows.join(','),
+    );
+    assert.ok(!result.windows.includes('2026-03-01..2026-03-01'));
+    assert.deepEqual(warnings, []);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
