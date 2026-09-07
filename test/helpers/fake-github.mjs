@@ -46,10 +46,14 @@ export function makeFakeGitHub(opts = {}) {
       const created = url.searchParams.get('created');
       let matched = runs;
       if (created) {
+        // Like the real endpoint, a bound is either a day or a full instant, and
+        // a day-only bound covers that whole day.
         const [start, end] = created.split('..');
+        const from = Date.parse(start.length > 10 ? start : `${start}T00:00:00Z`);
+        const to = Date.parse(end.length > 10 ? end : `${end}T23:59:59Z`);
         matched = runs.filter((r) => {
-          const day = r.created_at.slice(0, 10);
-          return day >= start && day <= end;
+          const at = Date.parse(r.created_at);
+          return at >= from && at <= to;
         });
       }
       const capped = matched.slice(0, SEARCH_CAP);

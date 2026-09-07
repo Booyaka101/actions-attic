@@ -50,7 +50,6 @@ test('splitWindow halves a month and bottoms out on a single day', () => {
     { start: '2026-02-01', end: '2026-02-14' },
     { start: '2026-02-15', end: '2026-02-28' },
   ]);
-  assert.equal(splitWindow({ start: '2026-03-07', end: '2026-03-07' }), null);
   assert.deepEqual(splitWindow({ start: '2026-03-07', end: '2026-03-08' }), [
     { start: '2026-03-07', end: '2026-03-07' },
     { start: '2026-03-08', end: '2026-03-08' },
@@ -60,16 +59,47 @@ test('splitWindow halves a month and bottoms out on a single day', () => {
 test('repeated splitting stays contiguous and loses no day', () => {
   const seen = new Set();
   const walk = (w) => {
-    const halves = splitWindow(w);
-    if (!halves) {
+    if (w.start === w.end) {
       seen.add(w.start);
       return;
     }
+    const halves = splitWindow(w);
     assert.equal(addDays(halves[0].end, 1), halves[1].start);
     for (const h of halves) walk(h);
   };
   walk(monthWindow('2026-01'));
   assert.equal(seen.size, 31);
+});
+
+test('a single day splits on the second, so a busy day is not capped at 1,000', () => {
+  // `created` honours instants, which is the only way past the 1,000-result cap
+  // for a repository doing more than that in one day.
+  assert.deepEqual(splitWindow({ start: '2026-03-07', end: '2026-03-07' }), [
+    { start: '2026-03-07T00:00:00Z', end: '2026-03-07T11:59:59Z' },
+    { start: '2026-03-07T12:00:00Z', end: '2026-03-07T23:59:59Z' },
+  ]);
+  assert.deepEqual(splitWindow({ start: '2026-03-07T00:00:00Z', end: '2026-03-07T00:00:01Z' }), [
+    { start: '2026-03-07T00:00:00Z', end: '2026-03-07T00:00:00Z' },
+    { start: '2026-03-07T00:00:01Z', end: '2026-03-07T00:00:01Z' },
+  ]);
+  assert.equal(splitWindow({ start: '2026-03-07T00:00:00Z', end: '2026-03-07T00:00:00Z' }), null);
+});
+
+test('splitting a day to the second stays contiguous and covers every second', () => {
+  const day = { start: '2026-03-07', end: '2026-03-07' };
+  let covered = 0;
+  const walk = (w, depth) => {
+    const halves = splitWindow(w);
+    // Stop early where a real backfill would: once a window is small enough.
+    if (!halves || depth === 12) {
+      covered += (Date.parse(w.end) - Date.parse(w.start)) / 1000 + 1;
+      return;
+    }
+    assert.equal(Date.parse(halves[1].start) - Date.parse(halves[0].end), 1000);
+    for (const h of halves) walk(h, depth + 1);
+  };
+  walk(day, 0);
+  assert.equal(covered, 86_400);
 });
 
 test('date helpers agree across a year boundary', () => {
