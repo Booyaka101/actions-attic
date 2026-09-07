@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 - 2026-09-07
 
 ### Fixed
 
@@ -8,13 +8,17 @@
   backfill as complete. The `created` filter accepts full instants, not only dates, so the
   window halving now carries on below a day instead of stopping there. Measured against
   `pytorch/pytorch`, which does around 10,000 runs a day: the first seven days of 2026-09
-  hold 53,862 runs, of which the old walk archived 6,999 and said `backfillComplete: true`.
+  hold 53,990 runs, of which the old walk archived 6,999 and said `backfillComplete: true`.
   Anyone archiving a busy repository before 2026-10-01 would have kept 13% of it and been
   told the attic was complete.
 
   Only more than 1,000 runs inside a single second is now beyond reach, which is where the
-  cap really is irreducible. Existing archives do not refill a day they already recorded as
-  captured; delete the affected month files to rewalk them.
+  cap really is irreducible.
+
+  Existing archives do not refill a day they already recorded as captured. `preflight` finds
+  the gap: it counts runs at risk against distinct run ids in the archive, so a truncated day
+  shows up as `unarchived.runs` above zero and `--fail-on-unarchived` exits 1. Delete the
+  affected month files under `runs/` and rerun the backfill to rewalk them.
 
 ## 1.2.0 - 2026-08-30
 
