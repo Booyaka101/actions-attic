@@ -72,6 +72,18 @@
   tell "this build never captured it" from "captured as empty" without knowing which
   version wrote the line. No rewalk, no migration.
 
+### Fixed
+
+- Links, bold and code spans in the Action's job summary rendered with their punctuation
+  showing: `[Browse this commit](https://...)` came out as that literal text, and so did
+  `**YES**` in the at-risk column. GitHub renders the summary as CommonMark, where a raw
+  HTML block runs to the next blank line, so a paragraph written straight after a heading
+  or a table is still inside that block and its markdown is left alone. Checked against
+  `POST https://api.github.com/markdown` in `gfm` mode on the real summary text. The
+  summary now opens a blank line before each paragraph and writes the table and list cells
+  as HTML, which renders the same either way. The archive summary has carried this bug
+  since 1.3.0.
+
 ## 1.3.0 - 2026-09-07
 
 ### Fixed

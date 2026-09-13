@@ -47,6 +47,20 @@ function boolInput(name: string): boolean {
 /** Outside refs/heads/, so the archive is not a branch anyone has to look after. */
 const DEFAULT_REF = 'refs/attic/archive';
 
+/**
+ * Start a markdown paragraph in the job summary. GitHub renders the summary as
+ * CommonMark, where a raw HTML block runs to the next blank line: a paragraph
+ * written straight after a heading or a table is inside that block, so its
+ * links and `**bold**` come out with the punctuation showing.
+ */
+function para(summary: typeof core.summary, text: string): typeof core.summary {
+  return summary.addEOL().addRaw(text, true);
+}
+
+/** Table cells and list items are raw HTML, and their values come from a registry document. */
+const esc = (value: string): string =>
+  value.replace(/[&<>"]/g, (ch) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[ch]};`);
+
 export async function run(): Promise<void> {
   const token = input('token', process.env.GITHUB_TOKEN ?? '');
   if (!token) {
@@ -167,27 +181,24 @@ export async function run(): Promise<void> {
     ? 'Backfill complete.'
     : `Backfill in progress${summary.frontier ? `, frontier \`${summary.frontier}\`` : ''}. The next run continues from here.`;
 
-  await core.summary
-    .addHeading(`actions-attic: ${owner}/${repo}`, 3)
-    .addRaw(
-      summary.commit
-        ? `Committed \`${summary.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ''}`
-        : `Nothing new on \`${ref}\`; no commit made.`,
-      true,
-    )
-    .addBreak()
-    .addTable([
-      [
-        { data: 'record type', header: true },
-        { data: 'new this run', header: true },
-        { data: 'total archived', header: true },
-      ],
-      ['workflow runs', n(summary.runs), n(totals.runs)],
-      ['check runs', n(summary.checks), n(totals.checks)],
-      ['commit statuses', n(summary.statuses), n(totals.statuses)],
-    ])
-    .addRaw(`${state} ${n(summary.requests)} API request${summary.requests === 1 ? '' : 's'} used.`, true)
-    .write();
+  const report = core.summary.addHeading(`actions-attic: ${owner}/${repo}`, 3);
+  para(
+    report,
+    summary.commit
+      ? `Committed \`${summary.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ''}`
+      : `Nothing new on \`${ref}\`; no commit made.`,
+  ).addTable([
+    [
+      { data: 'record type', header: true },
+      { data: 'new this run', header: true },
+      { data: 'total archived', header: true },
+    ],
+    ['workflow runs', n(summary.runs), n(totals.runs)],
+    ['check runs', n(summary.checks), n(totals.checks)],
+    ['commit statuses', n(summary.statuses), n(totals.statuses)],
+  ]);
+  para(report, `${state} ${n(summary.requests)} API request${summary.requests === 1 ? '' : 's'} used.`);
+  await report.write();
 }
 
 /** Report what the retention change will delete. Reads the archive, never writes it. */
@@ -290,38 +301,37 @@ async function writeProvenanceSummary(
   for (const r of result.reports) {
     if (r.state === 'no-provenance') continue;
     const cells = stateCells(r);
+    const run = r.run;
     rows.push([
-      r.version,
-      r.run ? `[${r.run.owner}/${r.run.repo} #${r.run.runId}/${r.run.attempt}](${r.run.url})` : '-',
+      esc(r.version),
+      run ? `<a href="${esc(run.url)}">${esc(`${run.owner}/${run.repo} #${run.runId}/${run.attempt}`)}</a>` : '-',
       (r.runCreatedAt ?? r.publishedAt ?? '-').slice(0, 10),
       cells.archived,
-      cells.atRisk === 'YES' ? '**YES**' : cells.atRisk,
+      cells.atRisk === 'YES' ? '<strong>YES</strong>' : cells.atRisk,
     ]);
   }
 
-  const summary = core.summary
-    .addHeading(`actions-attic provenance: ${result.package}`, 3)
-    .addRaw(
-      `${n(result.versions)} published version${result.versions === 1 ? '' : 's'}, ` +
-        `${n(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; ` +
-        `from ${result.deletionDate}, ` +
-        `runs created before \`${result.cutoffIso}\` are deleted.`,
-      true,
-    )
-    .addBreak();
+  const summary = core.summary.addHeading(`actions-attic provenance: ${result.package}`, 3);
+  para(
+    summary,
+    `${n(result.versions)} published version${result.versions === 1 ? '' : 's'}, ` +
+      `${n(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; ` +
+      `from ${result.deletionDate}, ` +
+      `runs created before \`${result.cutoffIso}\` are deleted.`,
+  );
   if (rows.length > 1) summary.addTable(rows);
   // The verdict says "see the notes above", so they have to be here.
   const notes = notesFor(result);
-  if (notes.length > 0) summary.addList(notes.map((r) => `\`${r.version}\`: ${r.note}`));
-  await summary
-    .addRaw(provenanceVerdict(result, nextCommand).join(' '), true)
-    .addBreak()
-    .addRaw(
-      'Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the ' +
-        `pointer names. ${n(requests)} API request${requests === 1 ? '' : 's'} used.`,
-      true,
-    )
-    .write();
+  if (notes.length > 0) {
+    summary.addList(notes.map((r) => `<code>${esc(r.version)}</code>: ${esc(r.note ?? '')}`));
+  }
+  para(summary, provenanceVerdict(result, nextCommand).join(' '));
+  para(
+    summary,
+    'Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the ' +
+      `pointer names. ${n(requests)} API request${requests === 1 ? '' : 's'} used.`,
+  );
+  await summary.write();
 }
 
 async function writePreflightSummary(result: PreflightResult, requests: number): Promise<void> {
@@ -330,27 +340,24 @@ async function writePreflightSummary(result: PreflightResult, requests: number):
     result.unarchived.total > 0
       ? `**${n(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.`
       : 'Everything at risk is already in the attic.';
-  await core.summary
-    .addHeading('actions-attic preflight', 3)
-    .addRaw(
-      `Retention window: ${retentionPhrase(result)}. ` +
-        `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
-      true,
-    )
-    .addBreak()
-    .addTable([
-      [
-        { data: 'record type', header: true },
-        { data: 'at risk', header: true },
-        { data: 'archived', header: true },
-        { data: 'unarchived', header: true },
-      ],
-      ['workflow runs', n(result.atRisk.runs), n(result.archived.runs), n(result.unarchived.runs)],
-      ['check runs', n(result.atRisk.checks), n(result.archived.checks), n(result.unarchived.checks)],
-      ['commit statuses', n(result.atRisk.statuses), n(result.archived.statuses), n(result.unarchived.statuses)],
-    ])
-    .addRaw(`${n(requests)} API request${requests === 1 ? '' : 's'} used.`, true)
-    .write();
+  const summary = core.summary.addHeading('actions-attic preflight', 3);
+  para(
+    summary,
+    `Retention window: ${retentionPhrase(result)}. ` +
+      `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
+  ).addTable([
+    [
+      { data: 'record type', header: true },
+      { data: 'at risk', header: true },
+      { data: 'archived', header: true },
+      { data: 'unarchived', header: true },
+    ],
+    ['workflow runs', n(result.atRisk.runs), n(result.archived.runs), n(result.unarchived.runs)],
+    ['check runs', n(result.atRisk.checks), n(result.archived.checks), n(result.unarchived.checks)],
+    ['commit statuses', n(result.atRisk.statuses), n(result.archived.statuses), n(result.unarchived.statuses)],
+  ]);
+  para(summary, `${n(requests)} API request${requests === 1 ? '' : 's'} used.`);
+  await summary.write();
 }
 
 run().catch((err: unknown) => {

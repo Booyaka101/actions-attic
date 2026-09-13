@@ -21247,6 +21247,10 @@ function boolInput(name) {
   throw new Error(`input "${name}" must be true or false, got "${raw}"`);
 }
 var DEFAULT_REF = "refs/attic/archive";
+function para(summary2, text) {
+  return summary2.addEOL().addRaw(text, true);
+}
+var esc = (value) => value.replace(/[&<>"]/g, (ch) => `&${{ "&": "amp", "<": "lt", ">": "gt", '"': "quot" }[ch]};`);
 async function run() {
   const token = input("token", process.env.GITHUB_TOKEN ?? "");
   if (!token) {
@@ -21343,10 +21347,11 @@ async function run() {
   const totals = summary2.archive.manifest.counts;
   const n4 = (value) => value.toLocaleString("en-US");
   const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""}. The next run continues from here.`;
-  await summary.addHeading(`actions-attic: ${owner}/${repo}`, 3).addRaw(
-    summary2.commit ? `Committed \`${summary2.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ""}` : `Nothing new on \`${ref}\`; no commit made.`,
-    true
-  ).addBreak().addTable([
+  const report = summary.addHeading(`actions-attic: ${owner}/${repo}`, 3);
+  para(
+    report,
+    summary2.commit ? `Committed \`${summary2.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ""}` : `Nothing new on \`${ref}\`; no commit made.`
+  ).addTable([
     [
       { data: "record type", header: true },
       { data: "new this run", header: true },
@@ -21355,7 +21360,9 @@ async function run() {
     ["workflow runs", n4(summary2.runs), n4(totals.runs)],
     ["check runs", n4(summary2.checks), n4(totals.checks)],
     ["commit statuses", n4(summary2.statuses), n4(totals.statuses)]
-  ]).addRaw(`${state} ${n4(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`, true).write();
+  ]);
+  para(report, `${state} ${n4(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`);
+  await report.write();
 }
 async function preflightRun(api, backend, owner, repo) {
   const retentionRaw = getInput("retention-days").trim();
@@ -21436,33 +21443,40 @@ async function writeProvenanceSummary(result, requests, nextCommand) {
   for (const r of result.reports) {
     if (r.state === "no-provenance") continue;
     const cells = stateCells(r);
+    const run2 = r.run;
     rows.push([
-      r.version,
-      r.run ? `[${r.run.owner}/${r.run.repo} #${r.run.runId}/${r.run.attempt}](${r.run.url})` : "-",
+      esc(r.version),
+      run2 ? `<a href="${esc(run2.url)}">${esc(`${run2.owner}/${run2.repo} #${run2.runId}/${run2.attempt}`)}</a>` : "-",
       (r.runCreatedAt ?? r.publishedAt ?? "-").slice(0, 10),
       cells.archived,
-      cells.atRisk === "YES" ? "**YES**" : cells.atRisk
+      cells.atRisk === "YES" ? "<strong>YES</strong>" : cells.atRisk
     ]);
   }
-  const summary2 = summary.addHeading(`actions-attic provenance: ${result.package}`, 3).addRaw(
-    `${n4(result.versions)} published version${result.versions === 1 ? "" : "s"}, ${n4(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; from ${result.deletionDate}, runs created before \`${result.cutoffIso}\` are deleted.`,
-    true
-  ).addBreak();
+  const summary2 = summary.addHeading(`actions-attic provenance: ${result.package}`, 3);
+  para(
+    summary2,
+    `${n4(result.versions)} published version${result.versions === 1 ? "" : "s"}, ${n4(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; from ${result.deletionDate}, runs created before \`${result.cutoffIso}\` are deleted.`
+  );
   if (rows.length > 1) summary2.addTable(rows);
   const notes = notesFor(result);
-  if (notes.length > 0) summary2.addList(notes.map((r) => `\`${r.version}\`: ${r.note}`));
-  await summary2.addRaw(verdict(result, nextCommand).join(" "), true).addBreak().addRaw(
-    `Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the pointer names. ${n4(requests)} API request${requests === 1 ? "" : "s"} used.`,
-    true
-  ).write();
+  if (notes.length > 0) {
+    summary2.addList(notes.map((r) => `<code>${esc(r.version)}</code>: ${esc(r.note ?? "")}`));
+  }
+  para(summary2, verdict(result, nextCommand).join(" "));
+  para(
+    summary2,
+    `Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the pointer names. ${n4(requests)} API request${requests === 1 ? "" : "s"} used.`
+  );
+  await summary2.write();
 }
 async function writePreflightSummary(result, requests) {
   const n4 = (value) => value.toLocaleString("en-US");
   const verdict2 = result.unarchived.total > 0 ? `**${n4(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.` : "Everything at risk is already in the attic.";
-  await summary.addHeading("actions-attic preflight", 3).addRaw(
-    `Retention window: ${retentionPhrase(result)}. From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict2}`,
-    true
-  ).addBreak().addTable([
+  const summary2 = summary.addHeading("actions-attic preflight", 3);
+  para(
+    summary2,
+    `Retention window: ${retentionPhrase(result)}. From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict2}`
+  ).addTable([
     [
       { data: "record type", header: true },
       { data: "at risk", header: true },
@@ -21472,7 +21486,9 @@ async function writePreflightSummary(result, requests) {
     ["workflow runs", n4(result.atRisk.runs), n4(result.archived.runs), n4(result.unarchived.runs)],
     ["check runs", n4(result.atRisk.checks), n4(result.archived.checks), n4(result.unarchived.checks)],
     ["commit statuses", n4(result.atRisk.statuses), n4(result.archived.statuses), n4(result.unarchived.statuses)]
-  ]).addRaw(`${n4(requests)} API request${requests === 1 ? "" : "s"} used.`, true).write();
+  ]);
+  para(summary2, `${n4(requests)} API request${requests === 1 ? "" : "s"} used.`);
+  await summary2.write();
 }
 run().catch((err) => {
   if (err instanceof BudgetExhausted) {

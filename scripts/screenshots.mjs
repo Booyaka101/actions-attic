@@ -138,6 +138,30 @@ function inlineMarkdown(body) {
     .replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
+/**
+ * A step summary the way GitHub reads it: raw HTML passes straight through, and
+ * the lines between the HTML blocks are markdown paragraphs. A blank line is
+ * what ends an HTML block, which is why the summary writes one before each.
+ */
+function summaryBody(raw) {
+  const out = [];
+  let paragraph = [];
+  const flush = () => {
+    if (paragraph.length > 0) out.push(`<p>${inlineMarkdown(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
+  for (const line of raw.split('\n')) {
+    if (line !== '' && !line.startsWith('<')) {
+      paragraph.push(line);
+      continue;
+    }
+    flush();
+    if (line !== '') out.push(line);
+  }
+  flush();
+  return out.join('\n');
+}
+
 /** GitHub's job-summary panel, close enough to recognise at a glance. */
 function summaryPage(body) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -154,9 +178,10 @@ function summaryPage(body) {
   td:not(:first-child), th:not(:first-child) { text-align: right; }
   code { background: rgba(110,118,129,.4); border-radius: 6px; padding: .2em .4em; font-size: 85%;
          font-family: 'JetBrains Mono',Consolas,monospace; }
+  p { margin: 12px 0; }
   hr { border: 0; border-top: 1px solid ${THEME.border}; margin: 22px 0 4px; }
   br { line-height: 0; }
-  </style></head><body><div class="panel">${inlineMarkdown(body)}</div></body></html>`;
+  </style></head><body><div class="panel">${summaryBody(body)}</div></body></html>`;
 }
 
 const files = readdirSync(sessions).filter((f) => /\.(txt|html)$/.test(f)).sort();
