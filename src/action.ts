@@ -6,15 +6,16 @@ import { Archive } from './archive.js';
 import { RefBackend, normalizeRef } from './backend.js';
 import {
   type PreflightResult,
-  RETENTION_SOURCES,
   formatPreflight,
   resolveRetention,
+  retentionPhrase,
   runPreflight,
 } from './preflight.js';
 import {
   type ProvenanceResult,
   collectProvenance,
   formatProvenance,
+  notesFor,
   resolveProvenance,
   stateCells,
   verdict as provenanceVerdict,
@@ -302,13 +303,16 @@ async function writeProvenanceSummary(
     .addHeading(`actions-attic provenance: ${result.package}`, 3)
     .addRaw(
       `${n(result.versions)} published version${result.versions === 1 ? '' : 's'}, ` +
-        `${n(result.withProvenance)} with provenance. Retention window ${n(result.retentionDays)} days ` +
-        `(${RETENTION_SOURCES[result.retentionSource]}); from ${result.deletionDate}, ` +
+        `${n(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; ` +
+        `from ${result.deletionDate}, ` +
         `runs created before \`${result.cutoffIso}\` are deleted.`,
       true,
     )
     .addBreak();
   if (rows.length > 1) summary.addTable(rows);
+  // The verdict says "see the notes above", so they have to be here.
+  const notes = notesFor(result);
+  if (notes.length > 0) summary.addList(notes.map((r) => `\`${r.version}\`: ${r.note}`));
   await summary
     .addRaw(provenanceVerdict(result, nextCommand).join(' '), true)
     .addBreak()
@@ -329,7 +333,7 @@ async function writePreflightSummary(result: PreflightResult, requests: number):
   await core.summary
     .addHeading('actions-attic preflight', 3)
     .addRaw(
-      `Retention window: ${n(result.retentionDays)} days (${RETENTION_SOURCES[result.retentionSource]}). ` +
+      `Retention window: ${retentionPhrase(result)}. ` +
         `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
       true,
     )

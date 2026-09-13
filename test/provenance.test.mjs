@@ -15,11 +15,13 @@ import {
   REGISTRY,
   RegistryError,
   SLSA_PREDICATE,
+  SLSA_V02_PREDICATE,
   assertPackageName,
   attestationsUrl,
   collectProvenance,
   extractRunPointer,
   formatProvenance,
+  notesFor,
   packumentUrl,
   parseInvocationId,
   parsePackageSpec,
@@ -39,6 +41,7 @@ const ATT_120 = fixture('runner-drift-1.2.0.attestations.json');
 const ATT_121 = fixture('runner-drift-1.2.1.attestations.json');
 const CORE_PACKUMENT = fixture('actions-core.packument.json');
 const CORE_ATT = fixture('actions-core-3.0.1.attestations.json');
+const V02_ATT = fixture('sigstore-2.2.1.attestations.json');
 
 // runner-drift publishes from Booyaka101/runner-drift; @actions/core publishes
 // from actions/toolkit, which is what makes it the out-of-scope case.
@@ -200,6 +203,96 @@ test('a bundle from another repository is read the same way', () => {
   const { run } = extractRunPointer(CORE_ATT);
   assert.equal(`${run.owner}/${run.repo}`, 'actions/toolkit');
   assert.equal(run.runId, 24743632039);
+});
+
+test('a real SLSA v0.2 bundle resolves, since the oldest runs are the ones at risk', () => {
+  assert.deepEqual(
+    V02_ATT.attestations.map((a) => a.predicateType).sort(),
+    [NPM_PUBLISH_PREDICATE, SLSA_V02_PREDICATE].sort(),
+  );
+  const { run, note } = extractRunPointer(V02_ATT);
+  assert.equal(note, null);
+  assert.equal(`${run.owner}/${run.repo}`, 'sigstore/sigstore-js');
+  assert.equal(run.runId, 7837180521);
+  assert.equal(run.attempt, 1);
+  assert.equal(run.url, 'https://github.com/sigstore/sigstore-js/actions/runs/7837180521/attempts/1');
+});
+
+test('a v0.2 bundle with no environment block falls back to the git remote and the build id', () => {
+  const bare = {
+    attestations: [
+      {
+        predicateType: SLSA_V02_PREDICATE,
+        bundle: {
+          dsseEnvelope: {
+            payload: payload({
+              predicateType: SLSA_V02_PREDICATE,
+              predicate: {
+                invocation: { configSource: { uri: 'git+https://ghe.example.com/acme/widget@refs/heads/main' } },
+                metadata: { buildInvocationId: '99-3' },
+              },
+            }),
+          },
+        },
+      },
+    ],
+  };
+  const { run, note } = extractRunPointer(bare);
+  assert.equal(note, null);
+  assert.equal(run.host, 'https://ghe.example.com');
+  assert.equal(run.url, 'https://ghe.example.com/acme/widget/actions/runs/99/attempts/3');
+  assert.equal(`${run.owner}/${run.repo}`, 'acme/widget');
+  assert.equal(run.runId, 99);
+  assert.equal(run.attempt, 3);
+});
+
+test('a v0.2 remote with a .git suffix and a junk run id still resolve', () => {
+  const doc = {
+    attestations: [
+      {
+        predicateType: SLSA_V02_PREDICATE,
+        bundle: {
+          dsseEnvelope: {
+            payload: payload({
+              predicateType: SLSA_V02_PREDICATE,
+              predicate: {
+                invocation: {
+                  configSource: { uri: 'git+https://github.com/acme/widget.git@refs/tags/v1' },
+                  // A run id that does not parse falls through to the build id
+                  // rather than reporting the whole statement as unreadable.
+                  environment: { GITHUB_RUN_ID: 'not-a-number' },
+                },
+                metadata: { buildInvocationId: '5000000453-2' },
+              },
+            }),
+          },
+        },
+      },
+    ],
+  };
+  const { run, note } = extractRunPointer(doc);
+  assert.equal(note, null);
+  assert.equal(`${run.owner}/${run.repo}`, 'acme/widget');
+  assert.equal(run.runId, 5000000453);
+  assert.equal(run.attempt, 2);
+});
+
+test('a v0.2 bundle that names no run says so rather than claiming one', () => {
+  const empty = {
+    attestations: [
+      {
+        predicateType: SLSA_V02_PREDICATE,
+        bundle: {
+          dsseEnvelope: {
+            payload: payload({ predicateType: SLSA_V02_PREDICATE, predicate: { invocation: {}, metadata: {} } }),
+          },
+        },
+      },
+    ],
+  };
+  const { run, note } = extractRunPointer(empty);
+  assert.equal(run, null);
+  assert.match(note, /v0\.2 statement names no Actions run/);
 });
 
 test('the recorded bundle really does carry npm publish alongside SLSA', () => {
@@ -610,6 +703,42 @@ test('the report tabulates the versions that carry provenance', async () => {
   }
 });
 
+test('the shared note filter keeps the skipped versions and drops the noise', async () => {
+  const routes = runnerDriftRoutes();
+  delete routes[`${REGISTRY}/-/npm/v1/attestations/runner-drift%401.2.0`];
+  const collected = await collectProvenance('runner-drift', fakeRegistry(routes));
+  // Scoped elsewhere, so 1.2.1 is out of scope and its note only repeats the row.
+  const result = await resolveProvenance({
+    collected,
+    archive: null,
+    scope: { owner: 'acme', repo: 'widget' },
+    window: WINDOW,
+  });
+  assert.deepEqual(
+    notesFor(result).map((r) => r.version),
+    ['1.2.0'],
+  );
+  // The job summary reads the same list, which is how it stopped listing one
+  // "run belongs to ..." line per version of a package built elsewhere.
+  assert.equal(
+    result.reports.filter((r) => r.note).length > notesFor(result).length,
+    true,
+  );
+});
+
+test('a version npm advertises and then 404s is named, not silently dropped', async () => {
+  const routes = runnerDriftRoutes();
+  delete routes[`${REGISTRY}/-/npm/v1/attestations/runner-drift%401.2.0`];
+  const collected = await collectProvenance('runner-drift', fakeRegistry(routes));
+  const result = await resolveProvenance({ collected, archive: null, scope: null, window: WINDOW });
+
+  // It counts as no-provenance, so the table skips it; the note is the only
+  // thing telling you a version was advertised and then not served.
+  assert.equal(result.counts.noProvenance, 5);
+  const text = formatProvenance(result, 'actions-attic backfill <owner/repo>');
+  assert.match(text, /^1\.2\.0: the attestations endpoint returned 404 for this version$/m);
+});
+
 test('everything archived says so and asks for nothing', async () => {
   const dir = await makeArchive({
     runs: [runRecord(RUN_121), runRecord(RUN_120, { created_at: '2026-09-09T02:55:00Z' })],
@@ -673,6 +802,77 @@ test('the provenance command reports, and only fails when asked to', async () =>
 
     const failing = await attic([...args, '--fail-on-unarchived']);
     assert.equal(failing.code, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await server.close();
+  }
+});
+
+test('a version with no publish date counts as due, not as safe', async () => {
+  const collected = {
+    package: 'runner-drift',
+    registry: REGISTRY,
+    versions: [
+      // A mirror packument without a `time` map. fetchPackument tolerates that,
+      // so the resolver has to decide what an unknown date means.
+      { version: '1.2.1', publishedAt: null, hasAttestation: true, run: extractRunPointer(ATT_121).run, note: null },
+    ],
+  };
+  const result = await resolveProvenance({ collected, archive: null, scope: null, window: WINDOW });
+  const [report] = result.reports;
+  assert.equal(report.deleted, true);
+  assert.match(report.note, /no publish date on this registry/);
+});
+
+test('--fail-on-unarchived refuses to pass when there is no archive to check', async () => {
+  const server = await serveRegistry(SERVED);
+  try {
+    const res = await attic([
+      'provenance',
+      'runner-drift',
+      '--registry',
+      server.url,
+      '--retention-days',
+      '1',
+      '--fail-on-unarchived',
+    ]);
+    assert.equal(res.code, 2);
+    assert.match(res.stderr, /--fail-on-unarchived has nothing to check against/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('--repo with no value is a usage error, not a silently ignored flag', async () => {
+  const server = await serveRegistry(SERVED);
+  try {
+    const res = await attic(['provenance', 'runner-drift', '--registry', server.url, '--repo']);
+    assert.equal(res.code, 2);
+    assert.match(res.stderr, /--repo needs a value/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('an archive with no repository yet still names one, from the provenance', async () => {
+  const server = await serveRegistry(SERVED);
+  const dir = await mkdtemp(join(tmpdir(), 'attic-prov-empty-'));
+  try {
+    const res = await attic([
+      'provenance',
+      'runner-drift',
+      '--archive',
+      dir,
+      '--registry',
+      server.url,
+      '--retention-days',
+      '1',
+    ]);
+    assert.equal(res.code, 0);
+    // A fresh archive has no repo in its manifest, so the next step used to read
+    // `backfill <owner/repo>`, which is not a command anyone can paste.
+    assert.match(res.stdout, /Run: actions-attic backfill Booyaka101\/runner-drift --archive /);
+    assert.doesNotMatch(res.stdout, /<owner\/repo>/);
   } finally {
     await rm(dir, { recursive: true, force: true });
     await server.close();

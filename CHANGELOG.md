@@ -17,8 +17,11 @@
 
   The command reads the packument for the version list, the attestations endpoint for each
   version that has one, decodes the DSSE payload, and cross-references the run id and
-  attempt against the archive using the same identity the archive keys on. A real session
-  against our own package:
+  attempt against the archive using the same identity the archive keys on. Both provenance
+  shapes npm has published are read: SLSA v1, which names the run URL outright, and the
+  v0.2 form used until early 2024, which names the Actions environment and the
+  `<run id>-<attempt>` build invocation id instead. Those older versions are the ones the
+  retention change reaches first. A real session against our own package:
 
   ```
   $ actions-attic provenance runner-drift --archive ./attic

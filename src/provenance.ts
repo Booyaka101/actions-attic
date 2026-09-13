@@ -20,6 +20,8 @@ import { type RetentionWindow, retentionLines } from './preflight.js';
 
 export const REGISTRY = 'https://registry.npmjs.org';
 export const SLSA_PREDICATE = 'https://slsa.dev/provenance/v1';
+/** What npm published until early 2024. Still the only provenance older versions have. */
+export const SLSA_V02_PREDICATE = 'https://slsa.dev/provenance/v0.2';
 export const NPM_PUBLISH_PREDICATE = 'https://github.com/npm/attestation/tree/main/specs/publish/v0.1';
 
 /** What the invocationId points at, once parsed. */
@@ -230,7 +232,7 @@ export function extractRunPointer(doc: unknown): { run: RunPointer | null; note:
   const list = (doc as { attestations?: unknown } | null)?.attestations;
   if (!Array.isArray(list) || list.length === 0) return { run: null, note: 'the attestations document is empty' };
 
-  const slsa = list.find((a) => (a as { predicateType?: unknown })?.predicateType === SLSA_PREDICATE);
+  const slsa = list.find((a) => READERS.has((a as { predicateType?: unknown })?.predicateType as string));
   if (!slsa) {
     const seen = list
       .map((a) => (a as { predicateType?: unknown })?.predicateType)
@@ -242,7 +244,7 @@ export function extractRunPointer(doc: unknown): { run: RunPointer | null; note:
   const payload = (slsa as { bundle?: { dsseEnvelope?: { payload?: unknown } } }).bundle?.dsseEnvelope?.payload;
   if (typeof payload !== 'string' || payload === '') return { run: null, note: 'the DSSE envelope carries no payload' };
 
-  let statement: { predicate?: { runDetails?: { metadata?: { invocationId?: unknown } } } };
+  let statement: { predicate?: unknown };
   try {
     const json = Buffer.from(payload, 'base64').toString('utf8');
     statement = JSON.parse(json) as typeof statement;
@@ -250,12 +252,71 @@ export function extractRunPointer(doc: unknown): { run: RunPointer | null; note:
     return { run: null, note: 'the DSSE payload is not base64-encoded JSON' };
   }
 
-  const invocationId = statement?.predicate?.runDetails?.metadata?.invocationId;
+  const read = READERS.get((slsa as { predicateType: string }).predicateType);
+  return read!(statement?.predicate);
+}
+
+/** SLSA v1 names the run URL outright. */
+function readSlsaV1(predicate: unknown): { run: RunPointer | null; note: string | null } {
+  const invocationId = (predicate as { runDetails?: { metadata?: { invocationId?: unknown } } })?.runDetails?.metadata
+    ?.invocationId;
   if (typeof invocationId !== 'string' || invocationId === '') {
     return { run: null, note: 'the SLSA statement has no runDetails.metadata.invocationId' };
   }
   const run = parseInvocationId(invocationId);
   return run ? { run, note: null } : { run: null, note: `invocationId is not an Actions run URL: ${invocationId}` };
+}
+
+const CONFIG_SOURCE_RE = /^git\+(https?:\/\/[^/]+)\/([^/]+)\/([^/@]+?)(?:\.git)?(?:@|$)/;
+const BUILD_INVOCATION_RE = /^(\d+)-(\d+)$/;
+
+/** The first of the two places v0.2 keeps a number that actually parses. */
+const firstInt = (...values: (string | undefined)[]): number => {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (value !== undefined && value !== '' && Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  return Number.NaN;
+};
+
+/**
+ * SLSA v0.2 names no run URL. It carries the Actions environment instead, which
+ * the build type spec turns into the same URL. `metadata.buildInvocationId` is
+ * `<run id>-<attempt>` and `invocation.configSource.uri` is the git remote, so a
+ * bundle that omits the environment block still resolves.
+ */
+function readSlsaV02(predicate: unknown): { run: RunPointer | null; note: string | null } {
+  const p = predicate as {
+    invocation?: { configSource?: { uri?: unknown }; environment?: Record<string, unknown> };
+    metadata?: { buildInvocationId?: unknown };
+  };
+  const env = p?.invocation?.environment ?? {};
+  const uri = typeof p?.invocation?.configSource?.uri === 'string' ? p.invocation.configSource.uri : '';
+  const source = CONFIG_SOURCE_RE.exec(uri);
+  const build = BUILD_INVOCATION_RE.exec(typeof p?.metadata?.buildInvocationId === 'string' ? p.metadata.buildInvocationId : '');
+
+  const slug = typeof env.GITHUB_REPOSITORY === 'string' ? env.GITHUB_REPOSITORY.split('/') : null;
+  const owner = slug?.length === 2 ? slug[0] : source?.[2];
+  const repo = slug?.length === 2 ? slug[1] : source?.[3];
+  const str = (value: unknown) => (typeof value === 'string' ? value : undefined);
+  const runId = firstInt(str(env.GITHUB_RUN_ID), build?.[1]);
+  const attempt = firstInt(str(env.GITHUB_RUN_ATTEMPT), build?.[2]) || 1;
+
+  if (!owner || !repo || !Number.isSafeInteger(runId)) {
+    return { run: null, note: 'the SLSA v0.2 statement names no Actions run' };
+  }
+  const host = source?.[1] ?? 'https://github.com';
+  return { run: { host, owner, repo, runId, attempt, url: runUrl(host, owner, repo, runId, attempt) }, note: null };
+}
+
+const READERS = new Map([
+  [SLSA_PREDICATE, readSlsaV1],
+  [SLSA_V02_PREDICATE, readSlsaV02],
+]);
+
+/** The URL the GitHub Actions build type specifies for a run attempt. */
+export function runUrl(host: string, owner: string, repo: string, runId: number, attempt: number): string {
+  return `${host}/${owner}/${repo}/actions/runs/${runId}/attempts/${attempt}`;
 }
 
 const INVOCATION_RE = /^(https?:\/\/[^/]+)\/([^/]+)\/([^/]+)\/actions\/runs\/(\d+)(?:\/attempts\/(\d+))?\/?$/;
@@ -314,6 +375,9 @@ export async function collectProvenance(spec: string, opts: CollectOptions = {})
   // Publish order, newest first. The packument's key order is not guaranteed
   // and semver ordering would need a parser this package does not carry.
   names.sort((a, b) => (packument.time[a] ?? '').localeCompare(packument.time[b] ?? '')).reverse();
+
+  const probes = names.filter((v) => opts.probeAll || packument.versions[v]?.dist?.attestations?.url !== undefined);
+  if (probes.length > 1) c.log(`${name}: reading attestations for ${probes.length} of ${names.length} versions`);
 
   const versions: CollectedVersion[] = [];
   for (const version of names) {
@@ -392,10 +456,13 @@ export async function resolveProvenance(opts: ResolveOptions): Promise<Provenanc
 
     const { state, runCreatedAt, note } = await placeRun(v.run, archive, scope, oldest, v.publishedAt);
     const when = runCreatedAt ?? v.publishedAt;
-    const deleted = state !== 'out-of-scope' && when !== null && when < window.cutoffIso;
+    // A registry with no `time` map leaves the date unknown. Unknown counts as due,
+    // because a tool that exists to warn must not report a run as safe on no evidence.
+    const deleted = state !== 'out-of-scope' && (when === null || when < window.cutoffIso);
     const atRisk = deleted && (state === 'missing' || state === 'before-archive');
+    const undated = when === null && state !== 'out-of-scope' ? 'no publish date on this registry, so this counts as due' : null;
     counts[COUNT_KEY[state]]++;
-    reports.push({ ...base, note: note ?? v.note, state, runCreatedAt, deleted, atRisk });
+    reports.push({ ...base, note: note ?? v.note ?? undated, state, runCreatedAt, deleted, atRisk });
   }
 
   const unarchived = reports.filter((r) => r.state === 'missing' || r.state === 'before-archive');
@@ -472,10 +539,11 @@ const plural = (count: number, one: string, many = `${one}s`) => `${n(count)} ${
 /** Verb or pronoun agreeing with a count that is the subject of the sentence. */
 const agree = (count: number, one: string, many: string) => (count === 1 ? one : many);
 
+/** The at-risk cell for a version the cutoff spares; `atRisk` overrides it with YES. */
 const AT_RISK: Record<VersionState, string> = {
   archived: 'no',
-  missing: 'YES',
-  'before-archive': 'YES',
+  missing: 'later',
+  'before-archive': 'later',
   'out-of-scope': '-',
   'no-archive': '?',
   'no-provenance': '-',
@@ -493,10 +561,21 @@ const ARCHIVED: Record<VersionState, string> = {
 };
 
 /** The two verdict cells for one version, so the table and the job summary agree. */
+/**
+ * The notes worth printing, for the report and the job summary alike. Out-of-scope
+ * notes only repeat the repository the row and the verdict already name. Everything
+ * else stays, including the versions the table leaves out: a version npm advertises
+ * an attestation for and then 404s counts as no-provenance, and its note is the one
+ * signal that it was skipped.
+ */
+export function notesFor(result: ProvenanceResult): VersionReport[] {
+  return result.reports.filter((r) => r.note && r.state !== 'out-of-scope');
+}
+
 export function stateCells(r: VersionReport): { archived: string; atRisk: string } {
   return {
     archived: ARCHIVED[r.state],
-    atRisk: r.atRisk ? 'YES' : r.state === 'missing' || r.state === 'before-archive' ? 'later' : AT_RISK[r.state],
+    atRisk: r.atRisk ? 'YES' : AT_RISK[r.state],
   };
 }
 
@@ -532,7 +611,7 @@ export function formatProvenance(result: ProvenanceResult, nextCommand: string, 
     lines.push('', ...columns(rows));
   }
 
-  const notes = result.reports.filter((r) => r.note && (showAll || r.state !== 'no-provenance'));
+  const notes = notesFor(result);
   if (notes.length > 0) lines.push('', ...notes.map((r) => `${r.version}: ${r.note}`));
 
   lines.push('', ...verdict(result, nextCommand));

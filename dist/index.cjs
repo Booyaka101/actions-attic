@@ -20441,7 +20441,7 @@ async function resolveRetention(opts) {
     retentionDays = DEFAULT_RETENTION_DAYS;
     retentionSource = "default";
     warn(
-      (opts.api ? "the retention settings endpoint was not readable with this token (classic PATs need the repo scope); " : "no GitHub token, so the repository's own retention setting could not be read; ") + `assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`
+      (opts.api ? "the retention settings endpoint was not readable with this token (classic PATs need the repo scope); " : opts.owner === "" ? "no repository to read the retention setting from; " : "no GitHub token, so the repository's own retention setting could not be read; ") + `assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`
     );
   }
   if (settings?.maximumAllowedDays != null && retentionDays > settings.maximumAllowedDays) {
@@ -20587,9 +20587,12 @@ var RETENTION_SOURCES = {
   api: "repository setting",
   default: "GitHub default"
 };
+function retentionPhrase(window) {
+  return `${plural(window.retentionDays, "day")} (${RETENTION_SOURCES[window.retentionSource]})`;
+}
 function retentionLines(window, noun) {
   return [
-    `retention window: ${plural(window.retentionDays, "day")} (${RETENTION_SOURCES[window.retentionSource]})`,
+    `retention window: ${retentionPhrase(window)}`,
     `from ${window.deletionDate}, ${noun} created before ${window.cutoffIso} are deleted`
   ];
 }
@@ -20613,6 +20616,7 @@ function formatPreflight(result, nextCommand) {
 // src/provenance.ts
 var REGISTRY = "https://registry.npmjs.org";
 var SLSA_PREDICATE = "https://slsa.dev/provenance/v1";
+var SLSA_V02_PREDICATE = "https://slsa.dev/provenance/v0.2";
 var NPM_PUBLISH_PREDICATE = "https://github.com/npm/attestation/tree/main/specs/publish/v0.1";
 var RegistryError = class extends Error {
   url;
@@ -20707,7 +20711,7 @@ async function fetchPackument(name, opts = {}) {
 function extractRunPointer(doc) {
   const list = doc?.attestations;
   if (!Array.isArray(list) || list.length === 0) return { run: null, note: "the attestations document is empty" };
-  const slsa = list.find((a) => a?.predicateType === SLSA_PREDICATE);
+  const slsa = list.find((a) => READERS.has(a?.predicateType));
   if (!slsa) {
     const seen = list.map((a) => a?.predicateType).filter((t) => typeof t === "string");
     const only = seen.length === 1 && seen[0] === NPM_PUBLISH_PREDICATE ? " (only npm publish)" : "";
@@ -20722,12 +20726,50 @@ function extractRunPointer(doc) {
   } catch {
     return { run: null, note: "the DSSE payload is not base64-encoded JSON" };
   }
-  const invocationId = statement?.predicate?.runDetails?.metadata?.invocationId;
+  const read = READERS.get(slsa.predicateType);
+  return read(statement?.predicate);
+}
+function readSlsaV1(predicate) {
+  const invocationId = predicate?.runDetails?.metadata?.invocationId;
   if (typeof invocationId !== "string" || invocationId === "") {
     return { run: null, note: "the SLSA statement has no runDetails.metadata.invocationId" };
   }
   const run2 = parseInvocationId(invocationId);
   return run2 ? { run: run2, note: null } : { run: null, note: `invocationId is not an Actions run URL: ${invocationId}` };
+}
+var CONFIG_SOURCE_RE = /^git\+(https?:\/\/[^/]+)\/([^/]+)\/([^/@]+?)(?:\.git)?(?:@|$)/;
+var BUILD_INVOCATION_RE = /^(\d+)-(\d+)$/;
+var firstInt = (...values) => {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (value !== void 0 && value !== "" && Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  return Number.NaN;
+};
+function readSlsaV02(predicate) {
+  const p = predicate;
+  const env = p?.invocation?.environment ?? {};
+  const uri = typeof p?.invocation?.configSource?.uri === "string" ? p.invocation.configSource.uri : "";
+  const source = CONFIG_SOURCE_RE.exec(uri);
+  const build = BUILD_INVOCATION_RE.exec(typeof p?.metadata?.buildInvocationId === "string" ? p.metadata.buildInvocationId : "");
+  const slug = typeof env.GITHUB_REPOSITORY === "string" ? env.GITHUB_REPOSITORY.split("/") : null;
+  const owner = slug?.length === 2 ? slug[0] : source?.[2];
+  const repo = slug?.length === 2 ? slug[1] : source?.[3];
+  const str = (value) => typeof value === "string" ? value : void 0;
+  const runId = firstInt(str(env.GITHUB_RUN_ID), build?.[1]);
+  const attempt = firstInt(str(env.GITHUB_RUN_ATTEMPT), build?.[2]) || 1;
+  if (!owner || !repo || !Number.isSafeInteger(runId)) {
+    return { run: null, note: "the SLSA v0.2 statement names no Actions run" };
+  }
+  const host = source?.[1] ?? "https://github.com";
+  return { run: { host, owner, repo, runId, attempt, url: runUrl(host, owner, repo, runId, attempt) }, note: null };
+}
+var READERS = /* @__PURE__ */ new Map([
+  [SLSA_PREDICATE, readSlsaV1],
+  [SLSA_V02_PREDICATE, readSlsaV02]
+]);
+function runUrl(host, owner, repo, runId, attempt) {
+  return `${host}/${owner}/${repo}/actions/runs/${runId}/attempts/${attempt}`;
 }
 var INVOCATION_RE = /^(https?:\/\/[^/]+)\/([^/]+)\/([^/]+)\/actions\/runs\/(\d+)(?:\/attempts\/(\d+))?\/?$/;
 function parseInvocationId(url) {
@@ -20750,6 +20792,8 @@ async function collectProvenance(spec, opts = {}) {
     names = [wanted];
   }
   names.sort((a, b) => (packument.time[a] ?? "").localeCompare(packument.time[b] ?? "")).reverse();
+  const probes = names.filter((v) => opts.probeAll || packument.versions[v]?.dist?.attestations?.url !== void 0);
+  if (probes.length > 1) c.log(`${name}: reading attestations for ${probes.length} of ${names.length} versions`);
   const versions = [];
   for (const version of names) {
     const publishedAt = packument.time[version] ?? null;
@@ -20798,10 +20842,11 @@ async function resolveProvenance(opts) {
     }
     const { state, runCreatedAt, note } = await placeRun(v.run, archive, scope, oldest, v.publishedAt);
     const when = runCreatedAt ?? v.publishedAt;
-    const deleted = state !== "out-of-scope" && when !== null && when < window.cutoffIso;
+    const deleted = state !== "out-of-scope" && (when === null || when < window.cutoffIso);
     const atRisk = deleted && (state === "missing" || state === "before-archive");
+    const undated = when === null && state !== "out-of-scope" ? "no publish date on this registry, so this counts as due" : null;
     counts[COUNT_KEY[state]]++;
-    reports.push({ ...base, note: note ?? v.note, state, runCreatedAt, deleted, atRisk });
+    reports.push({ ...base, note: note ?? v.note ?? undated, state, runCreatedAt, deleted, atRisk });
   }
   const unarchived = reports.filter((r) => r.state === "missing" || r.state === "before-archive");
   const { retentionDays, retentionSource, cutoffIso, deletionDate } = window;
@@ -20865,8 +20910,8 @@ var plural2 = (count, one, many = `${one}s`) => `${n2(count)} ${count === 1 ? on
 var agree = (count, one, many) => count === 1 ? one : many;
 var AT_RISK = {
   archived: "no",
-  missing: "YES",
-  "before-archive": "YES",
+  missing: "later",
+  "before-archive": "later",
   "out-of-scope": "-",
   "no-archive": "?",
   "no-provenance": "-",
@@ -20881,10 +20926,13 @@ var ARCHIVED = {
   "no-provenance": "-",
   unreadable: "-"
 };
+function notesFor(result) {
+  return result.reports.filter((r) => r.note && r.state !== "out-of-scope");
+}
 function stateCells(r) {
   return {
     archived: ARCHIVED[r.state],
-    atRisk: r.atRisk ? "YES" : r.state === "missing" || r.state === "before-archive" ? "later" : AT_RISK[r.state]
+    atRisk: r.atRisk ? "YES" : AT_RISK[r.state]
   };
 }
 function columns(rows) {
@@ -20911,7 +20959,7 @@ function formatProvenance(result, nextCommand, showAll = false) {
     }
     lines.push("", ...columns(rows));
   }
-  const notes = result.reports.filter((r) => r.note && (showAll || r.state !== "no-provenance"));
+  const notes = notesFor(result);
   if (notes.length > 0) lines.push("", ...notes.map((r) => `${r.version}: ${r.note}`));
   lines.push("", ...verdict(result, nextCommand));
   return lines.join("\n");
@@ -21397,10 +21445,12 @@ async function writeProvenanceSummary(result, requests, nextCommand) {
     ]);
   }
   const summary2 = summary.addHeading(`actions-attic provenance: ${result.package}`, 3).addRaw(
-    `${n4(result.versions)} published version${result.versions === 1 ? "" : "s"}, ${n4(result.withProvenance)} with provenance. Retention window ${n4(result.retentionDays)} days (${RETENTION_SOURCES[result.retentionSource]}); from ${result.deletionDate}, runs created before \`${result.cutoffIso}\` are deleted.`,
+    `${n4(result.versions)} published version${result.versions === 1 ? "" : "s"}, ${n4(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; from ${result.deletionDate}, runs created before \`${result.cutoffIso}\` are deleted.`,
     true
   ).addBreak();
   if (rows.length > 1) summary2.addTable(rows);
+  const notes = notesFor(result);
+  if (notes.length > 0) summary2.addList(notes.map((r) => `\`${r.version}\`: ${r.note}`));
   await summary2.addRaw(verdict(result, nextCommand).join(" "), true).addBreak().addRaw(
     `Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the pointer names. ${n4(requests)} API request${requests === 1 ? "" : "s"} used.`,
     true
@@ -21410,7 +21460,7 @@ async function writePreflightSummary(result, requests) {
   const n4 = (value) => value.toLocaleString("en-US");
   const verdict2 = result.unarchived.total > 0 ? `**${n4(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.` : "Everything at risk is already in the attic.";
   await summary.addHeading("actions-attic preflight", 3).addRaw(
-    `Retention window: ${n4(result.retentionDays)} days (${RETENTION_SOURCES[result.retentionSource]}). From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict2}`,
+    `Retention window: ${retentionPhrase(result)}. From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict2}`,
     true
   ).addBreak().addTable([
     [

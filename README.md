@@ -269,7 +269,13 @@ is the audit trail the pointer names.
 `provenance` reads the packument for the version list, then the attestations endpoint for
 each version that has one, decodes the DSSE payload, takes the in-toto statement whose
 predicate type is `https://slsa.dev/provenance/v1`, and cross-references the run id and
-attempt against the archive using the same identity the archive keys on. A real session
+attempt against the archive using the same identity the archive keys on.
+
+Versions published before early 2024 carry `https://slsa.dev/provenance/v0.2` instead, which
+names no run URL. Those are read too, from `invocation.environment`, or from the git remote
+in `invocation.configSource.uri` plus the `<run id>-<attempt>` in `metadata.buildInvocationId`
+when the environment block is absent. They are the oldest runs a package has, so they are the
+ones the retention change reaches first. A real session
 against [`runner-drift`](https://www.npmjs.com/package/runner-drift), with
 `--retention-days 1` so its young runs fall inside the cutoff:
 
@@ -315,11 +321,16 @@ Every provenance-referenced run for Booyaka101/runner-drift is in the attic.
 
 </details>
 
-The first command exited 1, the last exited 0. The repository came from the archive's own
-manifest in the second call, which is why `--repo` was only needed while the attic was
-empty. `--json` prints the structured result and nothing else, `--all` lists the versions
-published without provenance too, `--version` checks one version, and `--registry` points at
-a mirror.
+The first command exited 1, the last exited 0. `--repo` names the repository whose retention
+setting applies, and it is optional: the archive's manifest answers it once there is an
+archive, and the provenance itself answers it before that. Pass it when a package's
+provenance names more than one repository, the one case neither can decide.
+
+`--json` prints the structured result and nothing else, `--all` lists the versions published
+without provenance too, `--version` checks one version, and `--registry` points at a mirror.
+`--fail-on-unarchived` exits 1 while a referenced run is unarchived and due for deletion, and
+refuses to run at all when there is no archive to check against, so a scheduled check that
+loses its token fails rather than passing on no evidence.
 
 The registry half needs no credentials, so `provenance` works without a GitHub token; it
 then falls back to GitHub's 90-day platform default for the retention window and says so.
@@ -463,10 +474,12 @@ The JSONL is plain text, so `grep`, `jq` and `git log` work on it directly. That
 - **No log text.** Job logs are a much larger retention problem and are out of scope; this archives the run, check and status metadata.
 - **No artifacts.**
 - `provenance` reads npm. Other registries publish attestations in their own shapes, and only the
-  GitHub Actions build type is parsed, so a package built anywhere else reports its invocationId as
-  unreadable rather than guessing.
+  GitHub Actions build type is parsed, in both the SLSA v1 and v0.2 forms npm has published, so a
+  package built anywhere else reports its provenance as unreadable rather than guessing.
 - The 1,000-result search cap is worked around by halving the window, down to the second if a day needs it. Only more than 1,000 runs inside a single second is beyond reach; that warns and takes the 1,000 it can get.
 - Statuses need pull access. If the token cannot read them the run warns once and carries on with runs and checks.
+- A version whose publish date the registry does not report counts as due for deletion. The
+  report says so on the row. Guessing the other way would mark an unknown run safe.
 - The backfill only reaches as far back as GitHub still has data. Run it **before** 1 October 2026 and you keep what would otherwise be deleted; run it after and you get whatever survived your retention setting.
 - Data added to the archive is never removed by this tool. Deleting the branch deletes the archive.
 - One writer at a time. Two jobs committing the same archive race on the ref; the loser reloads and

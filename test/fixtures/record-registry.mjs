@@ -52,7 +52,8 @@ async function attestation(spec, file) {
   writeFileSync(join(OUT, file), `${JSON.stringify(slim, null, 2)}\n`);
   const ids = slim.attestations.map((a) => {
     const st = JSON.parse(Buffer.from(a.bundle.dsseEnvelope.payload, 'base64').toString('utf8'));
-    return st.predicate?.runDetails?.metadata?.invocationId ?? '-';
+    // v1 names the URL; v0.2 names `<run id>-<attempt>` and the git remote.
+    return st.predicate?.runDetails?.metadata?.invocationId ?? st.predicate?.metadata?.buildInvocationId ?? '-';
   });
   console.log(`${file}: ${ids.join(' | ')}`);
 }
@@ -62,3 +63,6 @@ await attestation('runner-drift@1.2.0', 'runner-drift-1.2.0.attestations.json');
 await attestation('runner-drift@1.2.1', 'runner-drift-1.2.1.attestations.json');
 await packument('@actions/core', 'actions-core.packument.json');
 await attestation('@actions/core@3.0.1', 'actions-core-3.0.1.attestations.json');
+// npm published SLSA v0.2 until early 2024, and those are the oldest runs, so the
+// shape the most at-risk versions carry has to stay covered.
+await attestation('sigstore@2.2.1', 'sigstore-2.2.1.attestations.json');

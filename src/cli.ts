@@ -413,8 +413,7 @@ async function cmdProvenance(args: Args): Promise<number> {
     warn,
   });
 
-  const repoFlag = args.flags.get('repo');
-  let scope = typeof repoFlag === 'string' ? asUsage(() => parseRepo(repoFlag)) : null;
+  let scope = args.flags.get('repo') === undefined ? null : asUsage(() => parseRepo(str(args, 'repo', '')));
   const token = findToken(args);
   const api = token === null ? null : githubApi(args, token);
   const localDir = args.flags.get('archive');
@@ -425,7 +424,9 @@ async function cmdProvenance(args: Args): Promise<number> {
     if (typeof localDir !== 'string') throw new UsageError('--archive needs a value');
     const dir = resolve(localDir);
     archive = await Archive.open(await FsBackend.open(dir), 'unknown/unknown');
-    scope ??= archiveRepo(archive);
+    // A fresh archive has no repo in its manifest yet, and falling through with no
+    // scope reads GitHub's platform default instead of the repository's own setting.
+    scope ??= archiveRepo(archive) ?? soleRepo(collected, warn);
     where = ` --archive ${display(dir)}`;
   } else {
     scope ??= soleRepo(collected, warn);
@@ -437,6 +438,14 @@ async function cmdProvenance(args: Args): Promise<number> {
       if (backend.isNew) stderr(`${scope.owner}/${scope.repo} has no archive at ${ref} yet`);
       archive = await Archive.open(backend, `${scope.owner}/${scope.repo}`);
     }
+  }
+
+  // Without an archive there is nothing to check against, and a gate that passes
+  // on no evidence is worse than one that fails.
+  if (archive === null && args.flags.get('fail-on-unarchived') === true) {
+    throw new UsageError(
+      '--fail-on-unarchived has nothing to check against. Pass --archive <dir>, or a token so the archive ref can be read.',
+    );
   }
 
   const retentionRaw = args.flags.get('retention-days');
@@ -460,7 +469,6 @@ async function cmdProvenance(args: Args): Promise<number> {
   return args.flags.get('fail-on-unarchived') === true && result.unarchivedAtRisk > 0 ? 1 : 0;
 }
 
-
 function archiveRepo(archive: Archive): { owner: string; repo: string } | null {
   const repo = archive.manifest.repo;
   if (!repo || repo === 'unknown/unknown') return null;
@@ -471,7 +479,7 @@ function archiveRepo(archive: Archive): { owner: string; repo: string } | null {
   }
 }
 
-/** With no archive to ask, the provenance itself names the repository. */
+/** When neither --repo nor the archive names the repository, the provenance does. */
 function soleRepo(
   collected: Awaited<ReturnType<typeof collectProvenance>>,
   warn: (msg: string) => void,
@@ -486,7 +494,9 @@ function soleRepo(
 
 /** The local answer for a run whose html_url the retention change has deleted. */
 async function cmdShowRun(args: Args): Promise<number> {
-  const raw = args.positional[0];
+  // Trimmed once, because the attempt suffix is matched against the same string
+  // parseInvocationId parses; a pasted URL with trailing space must agree.
+  const raw = args.positional[0]?.trim();
   if (!raw) throw new UsageError('show-run needs a run id, e.g. `actions-attic show-run 34307443469 --archive ./attic`');
 
   // The run URL is what a dangling provenance pointer hands you, so paste it

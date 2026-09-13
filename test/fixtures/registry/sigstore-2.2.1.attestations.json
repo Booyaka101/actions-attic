@@ -1,0 +1,24 @@
+{
+  "attestations": [
+    {
+      "predicateType": "https://github.com/npm/attestation/tree/main/specs/publish/v0.1",
+      "bundle": {
+        "mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.2",
+        "dsseEnvelope": {
+          "payloadType": "application/vnd.in-toto+json",
+          "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInN1YmplY3QiOlt7Im5hbWUiOiJwa2c6bnBtL3NpZ3N0b3JlQDIuMi4xIiwiZGlnZXN0Ijp7InNoYTUxMiI6IjM4MTA1MjJhZjlhM2FmODBjMmM5NDZmZTIwMmRhOWVmMGEyODM4MmIwMjM3MDZhYWJjMjhhNTRjOTU0ZDNlOGQzMmYyNTI2NWY4YmIwMmFkZmNmODJlZDMzMDlmMGRjNjlmZWYxZmFlZGYzNWViMDhiNWY4MzU5OTRkNDBhOTA1In19XSwicHJlZGljYXRlVHlwZSI6Imh0dHBzOi8vZ2l0aHViLmNvbS9ucG0vYXR0ZXN0YXRpb24vdHJlZS9tYWluL3NwZWNzL3B1Ymxpc2gvdjAuMSIsInByZWRpY2F0ZSI6eyJuYW1lIjoic2lnc3RvcmUiLCJ2ZXJzaW9uIjoiMi4yLjEiLCJyZWdpc3RyeSI6Imh0dHBzOi8vcmVnaXN0cnkubnBtanMub3JnIn19"
+        }
+      }
+    },
+    {
+      "predicateType": "https://slsa.dev/provenance/v0.2",
+      "bundle": {
+        "mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.1",
+        "dsseEnvelope": {
+          "payloadType": "application/vnd.in-toto+json",
+          "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInN1YmplY3QiOlt7Im5hbWUiOiJwa2c6bnBtL3NpZ3N0b3JlQDIuMi4xIiwiZGlnZXN0Ijp7InNoYTUxMiI6IjM4MTA1MjJhZjlhM2FmODBjMmM5NDZmZTIwMmRhOWVmMGEyODM4MmIwMjM3MDZhYWJjMjhhNTRjOTU0ZDNlOGQzMmYyNTI2NWY4YmIwMmFkZmNmODJlZDMzMDlmMGRjNjlmZWYxZmFlZGYzNWViMDhiNWY4MzU5OTRkNDBhOTA1In19XSwicHJlZGljYXRlVHlwZSI6Imh0dHBzOi8vc2xzYS5kZXYvcHJvdmVuYW5jZS92MC4yIiwicHJlZGljYXRlIjp7ImJ1aWxkVHlwZSI6Imh0dHBzOi8vZ2l0aHViLmNvbS9ucG0vY2xpL2doYS92MiIsImJ1aWxkZXIiOnsiaWQiOiJodHRwczovL2dpdGh1Yi5jb20vYWN0aW9ucy9ydW5uZXIifSwiaW52b2NhdGlvbiI6eyJjb25maWdTb3VyY2UiOnsidXJpIjoiZ2l0K2h0dHBzOi8vZ2l0aHViLmNvbS9zaWdzdG9yZS9zaWdzdG9yZS1qc0ByZWZzL2hlYWRzL21haW4iLCJkaWdlc3QiOnsic2hhMSI6ImYyNTUwMWQyZjQ4MDUxMWEyOGZhYjlmYWVlODBmMTViOTJmODY2NzMifSwiZW50cnlQb2ludCI6Ii5naXRodWIvd29ya2Zsb3dzL3JlbGVhc2UueW1sIn0sInBhcmFtZXRlcnMiOnt9LCJlbnZpcm9ubWVudCI6eyJHSVRIVUJfRVZFTlRfTkFNRSI6InB1c2giLCJHSVRIVUJfUkVGIjoicmVmcy9oZWFkcy9tYWluIiwiR0lUSFVCX1JFUE9TSVRPUlkiOiJzaWdzdG9yZS9zaWdzdG9yZS1qcyIsIkdJVEhVQl9SRVBPU0lUT1JZX0lEIjoiNDk1NTc0NTU1IiwiR0lUSFVCX1JFUE9TSVRPUllfT1dORVJfSUQiOiI3MTA5NjM1MyIsIkdJVEhVQl9SVU5fQVRURU1QVCI6IjEiLCJHSVRIVUJfUlVOX0lEIjoiNzgzNzE4MDUyMSIsIkdJVEhVQl9TSEEiOiJmMjU1MDFkMmY0ODA1MTFhMjhmYWI5ZmFlZTgwZjE1YjkyZjg2NjczIiwiR0lUSFVCX1dPUktGTE9XX1JFRiI6InNpZ3N0b3JlL3NpZ3N0b3JlLWpzLy5naXRodWIvd29ya2Zsb3dzL3JlbGVhc2UueW1sQHJlZnMvaGVhZHMvbWFpbiIsIkdJVEhVQl9XT1JLRkxPV19TSEEiOiJmMjU1MDFkMmY0ODA1MTFhMjhmYWI5ZmFlZTgwZjE1YjkyZjg2NjczIn19LCJtZXRhZGF0YSI6eyJidWlsZEludm9jYXRpb25JZCI6Ijc4MzcxODA1MjEtMSIsImNvbXBsZXRlbmVzcyI6eyJwYXJhbWV0ZXJzIjpmYWxzZSwiZW52aXJvbm1lbnQiOmZhbHNlLCJtYXRlcmlhbHMiOmZhbHNlfSwicmVwcm9kdWNpYmxlIjpmYWxzZX0sIm1hdGVyaWFscyI6W3sidXJpIjoiZ2l0K2h0dHBzOi8vZ2l0aHViLmNvbS9zaWdzdG9yZS9zaWdzdG9yZS1qc0ByZWZzL2hlYWRzL21haW4iLCJkaWdlc3QiOnsic2hhMSI6ImYyNTUwMWQyZjQ4MDUxMWEyOGZhYjlmYWVlODBmMTViOTJmODY2NzMifX1dfX0="
+        }
+      }
+    }
+  ]
+}

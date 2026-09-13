@@ -120,7 +120,9 @@ export async function resolveRetention(opts: RetentionOptions): Promise<Retentio
     warn(
       (opts.api
         ? 'the retention settings endpoint was not readable with this token (classic PATs need the repo scope); '
-        : "no GitHub token, so the repository's own retention setting could not be read; ") +
+        : opts.owner === ''
+          ? 'no repository to read the retention setting from; '
+          : "no GitHub token, so the repository's own retention setting could not be read; ") +
         `assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`,
     );
   }
@@ -293,10 +295,15 @@ export const RETENTION_SOURCES: Record<RetentionSource, string> = {
   default: 'GitHub default',
 };
 
+/** "90 days (repository setting)", so the reports and the job summaries agree. */
+export function retentionPhrase(window: { retentionDays: number; retentionSource: RetentionSource }): string {
+  return `${plural(window.retentionDays, 'day')} (${RETENTION_SOURCES[window.retentionSource]})`;
+}
+
 /** The two header lines every retention report opens with. */
 export function retentionLines(window: Omit<RetentionWindow, 'repoCreatedAt'>, noun: string): string[] {
   return [
-    `retention window: ${plural(window.retentionDays, 'day')} (${RETENTION_SOURCES[window.retentionSource]})`,
+    `retention window: ${retentionPhrase(window)}`,
     `from ${window.deletionDate}, ${noun} created before ${window.cutoffIso} are deleted`,
   ];
 }
