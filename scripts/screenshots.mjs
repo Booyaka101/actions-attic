@@ -37,8 +37,9 @@ function classify(line) {
   if (line.startsWith('$ ')) return 'cmd';
   if (/^attic: /.test(line)) return 'accent';
   if (/hits the \d+-result cap|ceiling reached|^checkpointed:|^warning:|frontier at/.test(line)) return 'warn';
-  if (/^backfill complete$|^wrote \d|^indexed /.test(line)) return 'good';
-  if (/flake rate|^ {2}\w/.test(line)) return 'text';
+  if (/not in the attic|not in the archive|age[s]? out of the retention window/.test(line)) return 'warn';
+  if (/^backfill complete$|^wrote \d|^indexed |is in the attic\.$/.test(line)) return 'good';
+  if (/flake rate|^ {2}\w|^(version|\d[^ ]*) {2,}/.test(line)) return 'text';
   return 'dim';
 }
 
@@ -129,6 +130,38 @@ async function shoot(html, out) {
   }
 }
 
+/** The markdown core.summary leaves for GitHub to render. */
+function inlineMarkdown(body) {
+  return body
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/**
+ * A step summary the way GitHub reads it: raw HTML passes straight through, and
+ * the lines between the HTML blocks are markdown paragraphs. A blank line is
+ * what ends an HTML block, which is why the summary writes one before each.
+ */
+function summaryBody(raw) {
+  const out = [];
+  let paragraph = [];
+  const flush = () => {
+    if (paragraph.length > 0) out.push(`<p>${inlineMarkdown(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
+  for (const line of raw.split('\n')) {
+    if (line !== '' && !line.startsWith('<')) {
+      paragraph.push(line);
+      continue;
+    }
+    flush();
+    if (line !== '') out.push(line);
+  }
+  flush();
+  return out.join('\n');
+}
+
 /** GitHub's job-summary panel, close enough to recognise at a glance. */
 function summaryPage(body) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -136,6 +169,8 @@ function summaryPage(body) {
   body { padding: 24px; font-family: -apple-system,'Segoe UI',Helvetica,Arial,sans-serif; }
   .panel { width: 820px; background: ${THEME.bg}; color: ${THEME.text}; border: 1px solid ${THEME.border};
            border-radius: 10px; padding: 8px 26px 22px; box-shadow: 0 12px 34px rgba(0,0,0,.45); }
+  a { color: ${THEME.accent}; text-decoration: none; }
+  strong { color: #e6edf3; }
   h3 { font-size: 18px; margin: 20px 0 12px; color: #e6edf3; }
   table { border-collapse: collapse; margin: 6px 0 14px; }
   th, td { border: 1px solid ${THEME.border}; padding: 6px 14px; font-size: 14px; text-align: left; }
@@ -143,9 +178,10 @@ function summaryPage(body) {
   td:not(:first-child), th:not(:first-child) { text-align: right; }
   code { background: rgba(110,118,129,.4); border-radius: 6px; padding: .2em .4em; font-size: 85%;
          font-family: 'JetBrains Mono',Consolas,monospace; }
+  p { margin: 12px 0; }
   hr { border: 0; border-top: 1px solid ${THEME.border}; margin: 22px 0 4px; }
   br { line-height: 0; }
-  </style></head><body><div class="panel">${body}</div></body></html>`;
+  </style></head><body><div class="panel">${summaryBody(body)}</div></body></html>`;
 }
 
 const files = readdirSync(sessions).filter((f) => /\.(txt|html)$/.test(f)).sort();

@@ -21,9 +21,54 @@ export {
   DEFAULT_RETENTION_DAYS,
   DELETION_DATE,
   PUBLIC_MAX_RETENTION_DAYS,
+  RETENTION_SOURCES,
   formatPreflight,
+  resolveRetention,
+  retentionPhrase,
+  retentionLines,
   runPreflight,
 } from './preflight.js';
-export type { PreflightOptions, PreflightResult, RetentionSource, Tally } from './preflight.js';
+export type {
+  PreflightOptions,
+  PreflightResult,
+  RetentionOptions,
+  RetentionSource,
+  RetentionWindow,
+  Tally,
+} from './preflight.js';
+export {
+  NPM_PUBLISH_PREDICATE,
+  REGISTRY,
+  RegistryError,
+  SLSA_PREDICATE,
+  SLSA_V02_PREDICATE,
+  assertPackageName,
+  attestationsUrl,
+  collectProvenance,
+  extractRunPointer,
+  fetchPackument,
+  formatProvenance,
+  notesFor,
+  packumentUrl,
+  parseInvocationId,
+  parsePackageSpec,
+  referencedRepos,
+  resolveProvenance,
+  runUrl,
+  stateCells,
+  verdict as provenanceVerdict,
+} from './provenance.js';
+export type {
+  CollectOptions,
+  Collected,
+  CollectedVersion,
+  ProvenanceCounts,
+  ProvenanceResult,
+  RegistryOptions,
+  ResolveOptions,
+  RunPointer,
+  VersionReport,
+  VersionState,
+} from './provenance.js';
 export { MODES, parseRepo, runArchive } from './run.js';
 export type { Mode, RunOptions, RunSummary } from './run.js';

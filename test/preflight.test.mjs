@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { Api } from '../lib/api.js';
 import { Archive } from '../lib/archive.js';
 import { RefBackend } from '../lib/backend.js';
-import { formatPreflight, runPreflight } from '../lib/preflight.js';
+import { formatPreflight, retentionPhrase, runPreflight } from '../lib/preflight.js';
 import { runArchive } from '../lib/run.js';
 import { makeGitServer } from './helpers/fake-git.mjs';
 
@@ -398,4 +398,11 @@ test('the text report ends with the worked-example lines', () => {
     text.endsWith('Unarchived and at risk: 2 runs, 0 check runs, 0 statuses. Run: actions-attic backfill acme/widget'),
     text,
   );
+});
+
+test('the retention phrase agrees with its number and names the source in words', () => {
+  // The job summaries print this too, which is how they came to say "1 days (api)".
+  assert.equal(retentionPhrase({ retentionDays: 1, retentionSource: 'flag' }), '1 day (--retention-days)');
+  assert.equal(retentionPhrase({ retentionDays: 90, retentionSource: 'api' }), '90 days (repository setting)');
+  assert.equal(retentionPhrase({ retentionDays: 400, retentionSource: 'default' }), '400 days (GitHub default)');
 });

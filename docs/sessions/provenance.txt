@@ -1,0 +1,60 @@
+# actions-attic: does a published package still point at a run that exists?
+$ npx actions-attic provenance runner-drift --repo Booyaka101/runner-drift --archive ./attic --retention-days 1 --fail-on-unarchived
+runner-drift: 6 published versions, 2 with provenance
+retention window: 1 day (--retention-days)
+from 2026-10-01, runs created before 2026-09-12T14:18:23Z are deleted
+
+version  run                                     created     archived  at risk
+1.2.1    Booyaka101/runner-drift #34307443469/1  2026-09-09  no        YES
+1.2.0    Booyaka101/runner-drift #34305025325/1  2026-09-09  no        YES
+
+2 provenance-referenced runs are not in the attic and will be deleted on 2026-10-01.
+Run: actions-attic backfill Booyaka101/runner-drift --archive ./attic
+# exit 1
+
+$ npx actions-attic backfill Booyaka101/runner-drift --archive ./attic --months 3
+backfilling 2026-09
+2026-09: fetching checks/statuses for 12 new commits
+backfilling 2026-08
+2026-08: fetching checks/statuses for 26 new commits
+backfilling 2026-07
+attic: backfill 2026-07..2026-09 (84 runs)
+wrote 7 files to ./attic (84 runs, 322 checks, 0 statuses new)
+79 API requests used
+backfill complete
+
+$ npx actions-attic provenance runner-drift --archive ./attic --retention-days 1 --fail-on-unarchived
+runner-drift: 6 published versions, 2 with provenance
+retention window: 1 day (--retention-days)
+from 2026-10-01, runs created before 2026-09-12T14:19:04Z are deleted
+
+version  run                                     created     archived  at risk
+1.2.1    Booyaka101/runner-drift #34307443469/1  2026-09-09  yes       no
+1.2.0    Booyaka101/runner-drift #34305025325/1  2026-09-09  yes       no
+
+Every provenance-referenced run for Booyaka101/runner-drift is in the attic.
+# exit 0
+
+$ npx actions-attic show-run 34307443469 --archive ./attic
+  id                 34307443469
+  name               Release
+  status             completed
+  conclusion         success
+  created_at         2026-09-09T03:31:19Z
+  updated_at         2026-09-09T03:31:39Z
+  run_started_at     2026-09-09T03:31:19Z
+  head_sha           f028d63e70c4d67e48d1232d28fd6cfdf24a2b06
+  head_branch        v1.2.1
+  event              push
+  actor              Booyaka101
+  triggering_actor   Booyaka101
+  run_number         2
+  run_attempt        1
+  workflow_id        334716648
+  path               .github/workflows/release.yml
+  display_title      1.2.1: correct the enforcement date tense, and stop version strings r…
+  html_url           https://github.com/Booyaka101/runner-drift/actions/runs/34307443469
+
+$ npx actions-attic show-run 1 --archive ./attic
+run 1 is not in the archive at ./attic
+# exit 1

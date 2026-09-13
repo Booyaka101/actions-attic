@@ -45,6 +45,8 @@ export function toRunRecord(raw: any): RunRecord {
     run_number: raw.run_number ?? null,
     run_attempt: raw.run_attempt ?? null,
     workflow_id: raw.workflow_id ?? null,
+    path: raw.path ?? null,
+    display_title: raw.display_title ?? null,
     html_url: raw.html_url ?? null,
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "actions-attic",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Keep a permanent archive of a repository's GitHub Actions runs, checks and statuses before GitHub's 2026-10-01 retention change deletes them.",
   "keywords": [
     "github-actions",
@@ -12,7 +12,11 @@
     "commit-statuses",
     "backfill",
     "ci",
-    "flaky-tests"
+    "flaky-tests",
+    "provenance",
+    "slsa",
+    "npm-attestations",
+    "supply-chain"
   ],
   "homepage": "https://github.com/Booyaka101/actions-attic#readme",
   "bugs": {

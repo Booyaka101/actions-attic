@@ -39,6 +39,12 @@ test('--version prints just the version', async () => {
   assert.match(res.stdout.trim(), /^\d+\.\d+\.\d+$/);
 });
 
+test('a valueless --version after a command belongs to the command', async () => {
+  const res = await attic(['provenance', 'runner-drift', '--version']);
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /--version needs a value/);
+});
+
 test('no arguments prints help and exits non-zero', async () => {
   const res = await attic([]);
   assert.equal(res.code, 1);
@@ -130,4 +136,75 @@ test('a missing token is a usage error naming the ways to supply one', async () 
   assert.equal(res.code, 2);
   assert.match(res.stderr, /no GitHub token found/);
   assert.match(res.stderr, /GITHUB_TOKEN/);
+});
+
+test('show-run prints the archived record for a run id', async () => {
+  const res = await attic(['show-run', '5000000453', '--archive', FIXTURE]);
+  assert.equal(res.code, 0);
+  assert.match(res.stdout, /^ {2}id {17}5000000453$/m);
+  assert.match(res.stdout, /^ {2}name {15}build-linux$/m);
+  assert.match(res.stdout, /^ {2}run_attempt {8}2$/m);
+  // The fixture is the archive 1.3.0 wrote, so the schema 2 fields are empty.
+  assert.match(res.stdout, /^ {2}path {15}-$/m);
+  assert.match(res.stdout, /^ {2}display_title {6}-$/m);
+  assert.match(res.stdout, /2 attempts archived: 1, 2/);
+});
+
+test('show-run --attempt picks one, and says so when it is not there', async () => {
+  const first = await attic(['show-run', '5000000453', '--attempt', '1', '--archive', FIXTURE]);
+  assert.equal(first.code, 0);
+  assert.match(first.stdout, /^ {2}run_attempt {8}1$/m);
+
+  const missing = await attic(['show-run', '5000000453', '--attempt', '7', '--archive', FIXTURE]);
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /run 5000000453 has no attempt 7 in the archive; it holds attempt 1, 2/);
+});
+
+test('show-run --json prints the record as stored', async () => {
+  const res = await attic(['show-run', '5000000451', '--archive', FIXTURE, '--json']);
+  assert.equal(res.code, 0);
+  const record = JSON.parse(res.stdout);
+  assert.equal(record.id, 5000000451);
+  assert.equal(record.html_url, 'https://github.com/acme/widget/actions/runs/5000000451');
+  assert.equal(record.path, null);
+  assert.equal(record.display_title, null);
+});
+
+test('show-run exits 1 on a run id the archive does not hold', async () => {
+  const res = await attic(['show-run', '999', '--archive', FIXTURE]);
+  assert.equal(res.code, 1);
+  assert.match(res.stderr, /run 999 is not in the archive at /);
+  assert.doesNotMatch(res.stderr, /at Object\./);
+});
+
+test('show-run takes the run URL a provenance pointer names', async () => {
+  const url = 'https://github.com/acme/widget/actions/runs/5000000453';
+  const bare = await attic(['show-run', url, '--archive', FIXTURE]);
+  assert.equal(bare.code, 0);
+  assert.match(bare.stdout, /^ {2}run_attempt {8}2$/m);
+
+  const attempt = await attic(['show-run', `${url}/attempts/1`, '--archive', FIXTURE]);
+  assert.equal(attempt.code, 0);
+  assert.match(attempt.stdout, /^ {2}run_attempt {8}1$/m);
+
+  // An explicit --attempt still wins over the one in the URL.
+  const both = await attic(['show-run', `${url}/attempts/1`, '--attempt', '2', '--archive', FIXTURE]);
+  assert.equal(both.code, 0);
+  assert.match(both.stdout, /^ {2}run_attempt {8}2$/m);
+});
+
+test('show-run rejects a URL that is not an Actions run', async () => {
+  const res = await attic(['show-run', 'https://github.com/acme/widget/pull/7', '--archive', FIXTURE]);
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /is not an Actions run URL/);
+});
+
+test('show-run rejects a run id that is not a number', async () => {
+  const res = await attic(['show-run', 'abc', '--archive', FIXTURE]);
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /run id must be a positive integer, got "abc"/);
+
+  const none = await attic(['show-run', '--archive', FIXTURE]);
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /show-run needs a run id/);
 });

@@ -19,15 +19,27 @@ inputs:
     required: false
     default: ''
   mode:
-    description: 'auto (top up then continue the backfill), backfill, incremental, or preflight (report only).'
+    description: 'auto (top up then continue the backfill), backfill, incremental, preflight or provenance (report only).'
     required: false
     default: 'auto'
   retention-days:
-    description: 'Preflight only: retention window override instead of reading it from the API.'
+    description: 'Preflight and provenance: retention window override instead of reading it from the API.'
     required: false
     default: ''
   fail-on-unarchived:
-    description: 'Preflight only: fail the step when at-risk records are not archived yet.'
+    description: 'Preflight and provenance: fail the step when at-risk records are not archived yet.'
+    required: false
+    default: 'false'
+  package:
+    description: 'Provenance only: the npm package whose published provenance names workflow runs.'
+    required: false
+    default: ''
+  registry:
+    description: 'Provenance only: npm registry to read from.'
+    required: false
+    default: 'https://registry.npmjs.org'
+  probe-all:
+    description: 'Provenance only: ask the attestations endpoint about every version, not only advertised ones.'
     required: false
     default: 'false'
   backfill-months:
@@ -81,13 +93,15 @@ outputs:
   source-repository:
     description: 'Repository whose history was read.'
   retention-days:
-    description: 'Preflight only: the resolved retention window in days.'
+    description: 'Preflight and provenance: the resolved retention window in days.'
   retention-source:
-    description: 'Preflight only: where the window came from (flag, api, or default).'
+    description: 'Preflight and provenance: where the window came from (flag, api, or default).'
   unarchived-total:
-    description: 'Preflight only: at-risk records not yet in the archive.'
+    description: 'Preflight: at-risk records not yet in the archive. Provenance: referenced runs not archived and due for deletion.'
   preflight-json:
     description: 'Preflight only: the full preflight result as JSON.'
+  provenance-json:
+    description: 'Provenance only: the full provenance result as JSON.'
 
 runs:
   using: 'node24'

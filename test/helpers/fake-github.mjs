@@ -47,8 +47,12 @@ export function makeFakeGitHub(opts = {}) {
       let matched = runs;
       if (created) {
         // Like the real endpoint, a bound is either a day or a full instant, and
-        // a day-only bound covers that whole day.
-        const [start, end] = created.split('..');
+        // a day-only bound covers that whole day. A one-sided `<`/`>` filter is
+        // the same thing with the other end left open; the fake treats both ends
+        // as inclusive, which the real endpoint does not.
+        const half = /^([<>])=?(.+)$/.exec(created);
+        const range = half ? (half[1] === '<' ? `1970-01-01..${half[2]}` : `${half[2]}..2999-12-31`) : created;
+        const [start, end] = range.split('..');
         const from = Date.parse(start.length > 10 ? start : `${start}T00:00:00Z`);
         const to = Date.parse(end.length > 10 ? end : `${end}T23:59:59Z`);
         matched = runs.filter((r) => {

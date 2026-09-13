@@ -1,0 +1,24 @@
+{
+  "attestations": [
+    {
+      "predicateType": "https://github.com/npm/attestation/tree/main/specs/publish/v0.1",
+      "bundle": {
+        "mediaType": "application/vnd.dev.sigstore.bundle+json;version=0.2",
+        "dsseEnvelope": {
+          "payloadType": "application/vnd.in-toto+json",
+          "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjAuMSIsInN1YmplY3QiOlt7Im5hbWUiOiJwa2c6bnBtL3J1bm5lci1kcmlmdEAxLjIuMSIsImRpZ2VzdCI6eyJzaGE1MTIiOiI4Yzg5NTA0MTRmYTgyY2IwMDRjMDJhM2VhMTM4Y2QwYmIwZjM3NjUxY2NhYWYwYjhkZWM2MTc2ZTdmY2JkZmU1NmExMTVlMzJhODA5YmE3ZWI1YTVlM2UzNDBhNWMxYWYwZTlkMjU0NmQzM2YwZjkzNzk4NDY1MjI2YzExMDdlZCJ9fV0sInByZWRpY2F0ZVR5cGUiOiJodHRwczovL2dpdGh1Yi5jb20vbnBtL2F0dGVzdGF0aW9uL3RyZWUvbWFpbi9zcGVjcy9wdWJsaXNoL3YwLjEiLCJwcmVkaWNhdGUiOnsibmFtZSI6InJ1bm5lci1kcmlmdCIsInZlcnNpb24iOiIxLjIuMSIsInJlZ2lzdHJ5IjoiaHR0cHM6Ly9yZWdpc3RyeS5ucG1qcy5vcmcifX0="
+        }
+      }
+    },
+    {
+      "predicateType": "https://slsa.dev/provenance/v1",
+      "bundle": {
+        "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+        "dsseEnvelope": {
+          "payloadType": "application/vnd.in-toto+json",
+          "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJzdWJqZWN0IjpbeyJuYW1lIjoicGtnOm5wbS9ydW5uZXItZHJpZnRAMS4yLjEiLCJkaWdlc3QiOnsic2hhNTEyIjoiOGM4OTUwNDE0ZmE4MmNiMDA0YzAyYTNlYTEzOGNkMGJiMGYzNzY1MWNjYWFmMGI4ZGVjNjE3NmU3ZmNiZGZlNTZhMTE1ZTMyYTgwOWJhN2ViNWE1ZTNlMzQwYTVjMWFmMGU5ZDI1NDZkMzNmMGY5Mzc5ODQ2NTIyNmMxMTA3ZWQifX1dLCJwcmVkaWNhdGVUeXBlIjoiaHR0cHM6Ly9zbHNhLmRldi9wcm92ZW5hbmNlL3YxIiwicHJlZGljYXRlIjp7ImJ1aWxkRGVmaW5pdGlvbiI6eyJidWlsZFR5cGUiOiJodHRwczovL3Nsc2EtZnJhbWV3b3JrLmdpdGh1Yi5pby9naXRodWItYWN0aW9ucy1idWlsZHR5cGVzL3dvcmtmbG93L3YxIiwiZXh0ZXJuYWxQYXJhbWV0ZXJzIjp7IndvcmtmbG93Ijp7InJlZiI6InJlZnMvdGFncy92MS4yLjEiLCJyZXBvc2l0b3J5IjoiaHR0cHM6Ly9naXRodWIuY29tL0Jvb3lha2ExMDEvcnVubmVyLWRyaWZ0IiwicGF0aCI6Ii5naXRodWIvd29ya2Zsb3dzL3JlbGVhc2UueW1sIn19LCJpbnRlcm5hbFBhcmFtZXRlcnMiOnsiZ2l0aHViIjp7ImV2ZW50X25hbWUiOiJwdXNoIiwicmVwb3NpdG9yeV9pZCI6IjEzMjM1NzIxOTYiLCJyZXBvc2l0b3J5X293bmVyX2lkIjoiMTA2NDU4OCJ9fSwicmVzb2x2ZWREZXBlbmRlbmNpZXMiOlt7InVyaSI6ImdpdCtodHRwczovL2dpdGh1Yi5jb20vQm9veWFrYTEwMS9ydW5uZXItZHJpZnRAcmVmcy90YWdzL3YxLjIuMSIsImRpZ2VzdCI6eyJnaXRDb21taXQiOiJmMDI4ZDYzZTcwYzRkNjdlNDhkMTIzMmQyOGZkNmNmZGYyNGEyYjA2In19XX0sInJ1bkRldGFpbHMiOnsiYnVpbGRlciI6eyJpZCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9hY3Rpb25zL3J1bm5lci9naXRodWItaG9zdGVkIn0sIm1ldGFkYXRhIjp7Imludm9jYXRpb25JZCI6Imh0dHBzOi8vZ2l0aHViLmNvbS9Cb295YWthMTAxL3J1bm5lci1kcmlmdC9hY3Rpb25zL3J1bnMvMzQzMDc0NDM0NjkvYXR0ZW1wdHMvMSJ9fX19"
+        }
+      }
+    }
+  ]
+}

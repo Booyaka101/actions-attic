@@ -14,7 +14,7 @@
 import type { Backend, CommitResult } from './backend.js';
 import { type Month, monthOf } from './months.js';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export interface RunRecord {
   id: number;
@@ -32,6 +32,10 @@ export interface RunRecord {
   run_number: number | null;
   run_attempt: number | null;
   workflow_id: number | null;
+  /** Workflow file path as it was at the time. Added in schema 2; null before. */
+  path: string | null;
+  /** Added in schema 2; null before. */
+  display_title: string | null;
   html_url: string | null;
 }
 
@@ -89,6 +93,19 @@ const KEYS: Record<Kind, (r: any) => string> = {
   runs: (r: RunRecord) => `${r.id}:${r.run_attempt ?? 1}`,
   checks: (r: CheckRecord) => String(r.id),
   statuses: (r: StatusRecord) => String(r.id),
+};
+
+/**
+ * Fields a later schema added. A record written by an older build simply lacks
+ * them, so they are filled with null on read: callers can then tell "this build
+ * never captured it" from "captured as empty" without knowing which schema
+ * version wrote the line, and a 1.x archive keeps working without a rewalk.
+ */
+const FILL: Partial<Record<Kind, (r: any) => void>> = {
+  runs: (r) => {
+    r.path ??= null;
+    r.display_title ??= null;
+  },
 };
 
 const SORT_KEYS: Record<Kind, (r: any) => string> = {
@@ -211,6 +228,8 @@ export class Archive {
     const cached = this.cache.get(path);
     if (cached) return cached as T[];
     const records = parseJsonl<T>(await this.backend.read(path), path);
+    const fill = FILL[kind];
+    if (fill) for (const record of records) fill(record);
     this.cache.set(path, records);
     return records;
   }
@@ -272,6 +291,21 @@ export class Archive {
 
   async hasRun(id: number, attempt: number, month: Month): Promise<boolean> {
     return (await this.keys('runs', month)).has(`${id}:${attempt}`);
+  }
+
+  /**
+   * Every attempt archived under one run id, lowest attempt first. The month is
+   * not known to a caller holding only an id, so this reads across all of them;
+   * reads are cached, so repeated lookups only pay for the first pass.
+   */
+  async runAttempts(id: number): Promise<RunRecord[]> {
+    const found: RunRecord[] = [];
+    for (const month of this.months()) {
+      for (const run of await this.read<RunRecord>('runs', month)) {
+        if (run.id === id) found.push(run);
+      }
+    }
+    return found.sort((a, b) => (a.run_attempt ?? 1) - (b.run_attempt ?? 1));
   }
 
   /** SHAs whose checks and statuses have already been fetched for this month. */

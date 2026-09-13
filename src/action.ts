@@ -4,7 +4,22 @@ import * as core from '@actions/core';
 import { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
 import { Archive } from './archive.js';
 import { RefBackend, normalizeRef } from './backend.js';
-import { type PreflightResult, formatPreflight, runPreflight } from './preflight.js';
+import {
+  type PreflightResult,
+  formatPreflight,
+  resolveRetention,
+  retentionPhrase,
+  runPreflight,
+} from './preflight.js';
+import {
+  type ProvenanceResult,
+  collectProvenance,
+  formatProvenance,
+  notesFor,
+  resolveProvenance,
+  stateCells,
+  verdict as provenanceVerdict,
+} from './provenance.js';
 import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 
 function input(name: string, fallback: string): string {
@@ -32,6 +47,20 @@ function boolInput(name: string): boolean {
 /** Outside refs/heads/, so the archive is not a branch anyone has to look after. */
 const DEFAULT_REF = 'refs/attic/archive';
 
+/**
+ * Start a markdown paragraph in the job summary. GitHub renders the summary as
+ * CommonMark, where a raw HTML block runs to the next blank line: a paragraph
+ * written straight after a heading or a table is inside that block, so its
+ * links and `**bold**` come out with the punctuation showing.
+ */
+function para(summary: typeof core.summary, text: string): typeof core.summary {
+  return summary.addEOL().addRaw(text, true);
+}
+
+/** Table cells and list items are raw HTML, and their values come from a registry document. */
+const esc = (value: string): string =>
+  value.replace(/[&<>"]/g, (ch) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[ch]};`);
+
 export async function run(): Promise<void> {
   const token = input('token', process.env.GITHUB_TOKEN ?? '');
   if (!token) {
@@ -40,8 +69,9 @@ export async function run(): Promise<void> {
   }
 
   const mode = input('mode', 'auto');
-  if (mode !== 'preflight' && !MODES.includes(mode as Mode)) {
-    core.setFailed(`input "mode" must be one of ${MODES.join(', ')}, preflight, got "${mode}"`);
+  const reportOnly = mode === 'preflight' || mode === 'provenance';
+  if (!reportOnly && !MODES.includes(mode as Mode)) {
+    core.setFailed(`input "mode" must be one of ${MODES.join(', ')}, preflight, provenance, got "${mode}"`);
     return;
   }
 
@@ -88,12 +118,16 @@ export async function run(): Promise<void> {
   });
   if (backend.isNew) {
     core.info(
-      mode === 'preflight' ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`,
+      reportOnly ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`,
     );
   }
 
   if (mode === 'preflight') {
     await preflightRun(api, backend, owner, repo);
+    return;
+  }
+  if (mode === 'provenance') {
+    await provenanceRun(api, backend, owner, repo);
     return;
   }
 
@@ -147,27 +181,24 @@ export async function run(): Promise<void> {
     ? 'Backfill complete.'
     : `Backfill in progress${summary.frontier ? `, frontier \`${summary.frontier}\`` : ''}. The next run continues from here.`;
 
-  await core.summary
-    .addHeading(`actions-attic: ${owner}/${repo}`, 3)
-    .addRaw(
-      summary.commit
-        ? `Committed \`${summary.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ''}`
-        : `Nothing new on \`${ref}\`; no commit made.`,
-      true,
-    )
-    .addBreak()
-    .addTable([
-      [
-        { data: 'record type', header: true },
-        { data: 'new this run', header: true },
-        { data: 'total archived', header: true },
-      ],
-      ['workflow runs', n(summary.runs), n(totals.runs)],
-      ['check runs', n(summary.checks), n(totals.checks)],
-      ['commit statuses', n(summary.statuses), n(totals.statuses)],
-    ])
-    .addRaw(`${state} ${n(summary.requests)} API request${summary.requests === 1 ? '' : 's'} used.`, true)
-    .write();
+  const report = core.summary.addHeading(`actions-attic: ${owner}/${repo}`, 3);
+  para(
+    report,
+    summary.commit
+      ? `Committed \`${summary.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ''}`
+      : `Nothing new on \`${ref}\`; no commit made.`,
+  ).addTable([
+    [
+      { data: 'record type', header: true },
+      { data: 'new this run', header: true },
+      { data: 'total archived', header: true },
+    ],
+    ['workflow runs', n(summary.runs), n(totals.runs)],
+    ['check runs', n(summary.checks), n(totals.checks)],
+    ['commit statuses', n(summary.statuses), n(totals.statuses)],
+  ]);
+  para(report, `${state} ${n(summary.requests)} API request${summary.requests === 1 ? '' : 's'} used.`);
+  await report.write();
 }
 
 /** Report what the retention change will delete. Reads the archive, never writes it. */
@@ -203,33 +234,130 @@ async function preflightRun(api: Api, backend: RefBackend, owner: string, repo: 
   }
 }
 
+/**
+ * Which published versions of an npm package point provenance at a run this
+ * archive is supposed to hold. Reads the archive, never writes it.
+ */
+async function provenanceRun(api: Api, backend: RefBackend, owner: string, repo: string): Promise<void> {
+  const spec = core.getInput('package').trim();
+  if (!spec) {
+    core.setFailed('mode: provenance needs a `package` input, e.g. `package: my-package`.');
+    return;
+  }
+  const retentionRaw = core.getInput('retention-days').trim();
+  const retentionDays = retentionRaw === '' ? null : intInput('retention-days', 90, 1, 3650);
+  const failOn = boolInput('fail-on-unarchived');
+
+  const collected = await collectProvenance(spec, {
+    registry: input('registry', 'https://registry.npmjs.org'),
+    probeAll: boolInput('probe-all'),
+    log: (m) => core.info(m),
+    warn: (m) => core.warning(m),
+  });
+  const archive = await Archive.open(backend, `${owner}/${repo}`);
+  const window = await resolveRetention({
+    api,
+    owner,
+    repo,
+    retentionDays,
+    log: (m) => core.info(m),
+    warn: (m) => core.warning(m),
+  });
+  const result = await resolveProvenance({ collected, archive, scope: { owner, repo }, window });
+
+  core.setOutput('retention-days', result.retentionDays);
+  core.setOutput('retention-source', result.retentionSource);
+  core.setOutput('unarchived-total', result.unarchivedAtRisk);
+  core.setOutput('provenance-json', JSON.stringify(result));
+
+  const next = 'this workflow with mode auto or backfill until it reports backfill complete';
+  core.info(formatProvenance(result, next));
+  await writeProvenanceSummary(result, api.requests, next);
+
+  if (failOn && result.unarchivedAtRisk > 0) {
+    core.setFailed(
+      `${result.unarchivedAtRisk.toLocaleString('en-US')} provenance-referenced run${
+        result.unarchivedAtRisk === 1 ? ' is' : 's are'
+      } not archived and will be deleted on ${result.deletionDate}. Run ${next}.`,
+    );
+  }
+}
+
+async function writeProvenanceSummary(
+  result: ProvenanceResult,
+  requests: number,
+  nextCommand: string,
+): Promise<void> {
+  const n = (value: number) => value.toLocaleString('en-US');
+  const rows: Parameters<typeof core.summary.addTable>[0] = [
+    [
+      { data: 'version', header: true },
+      { data: 'run', header: true },
+      { data: 'created', header: true },
+      { data: 'archived', header: true },
+      { data: 'at risk', header: true },
+    ],
+  ];
+  for (const r of result.reports) {
+    if (r.state === 'no-provenance') continue;
+    const cells = stateCells(r);
+    const run = r.run;
+    rows.push([
+      esc(r.version),
+      run ? `<a href="${esc(run.url)}">${esc(`${run.owner}/${run.repo} #${run.runId}/${run.attempt}`)}</a>` : '-',
+      (r.runCreatedAt ?? r.publishedAt ?? '-').slice(0, 10),
+      cells.archived,
+      cells.atRisk === 'YES' ? '<strong>YES</strong>' : cells.atRisk,
+    ]);
+  }
+
+  const summary = core.summary.addHeading(`actions-attic provenance: ${result.package}`, 3);
+  para(
+    summary,
+    `${n(result.versions)} published version${result.versions === 1 ? '' : 's'}, ` +
+      `${n(result.withProvenance)} with provenance. Retention window ${retentionPhrase(result)}; ` +
+      `from ${result.deletionDate}, ` +
+      `runs created before \`${result.cutoffIso}\` are deleted.`,
+  );
+  if (rows.length > 1) summary.addTable(rows);
+  // The verdict says "see the notes above", so they have to be here.
+  const notes = notesFor(result);
+  if (notes.length > 0) {
+    summary.addList(notes.map((r) => `<code>${esc(r.version)}</code>: ${esc(r.note ?? '')}`));
+  }
+  para(summary, provenanceVerdict(result, nextCommand).join(' '));
+  para(
+    summary,
+    'Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the ' +
+      `pointer names. ${n(requests)} API request${requests === 1 ? '' : 's'} used.`,
+  );
+  await summary.write();
+}
+
 async function writePreflightSummary(result: PreflightResult, requests: number): Promise<void> {
   const n = (value: number) => value.toLocaleString('en-US');
   const verdict =
     result.unarchived.total > 0
       ? `**${n(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.`
       : 'Everything at risk is already in the attic.';
-  await core.summary
-    .addHeading('actions-attic preflight', 3)
-    .addRaw(
-      `Retention window: ${n(result.retentionDays)} days (${result.retentionSource}). ` +
-        `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
-      true,
-    )
-    .addBreak()
-    .addTable([
-      [
-        { data: 'record type', header: true },
-        { data: 'at risk', header: true },
-        { data: 'archived', header: true },
-        { data: 'unarchived', header: true },
-      ],
-      ['workflow runs', n(result.atRisk.runs), n(result.archived.runs), n(result.unarchived.runs)],
-      ['check runs', n(result.atRisk.checks), n(result.archived.checks), n(result.unarchived.checks)],
-      ['commit statuses', n(result.atRisk.statuses), n(result.archived.statuses), n(result.unarchived.statuses)],
-    ])
-    .addRaw(`${n(requests)} API request${requests === 1 ? '' : 's'} used.`, true)
-    .write();
+  const summary = core.summary.addHeading('actions-attic preflight', 3);
+  para(
+    summary,
+    `Retention window: ${retentionPhrase(result)}. ` +
+      `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
+  ).addTable([
+    [
+      { data: 'record type', header: true },
+      { data: 'at risk', header: true },
+      { data: 'archived', header: true },
+      { data: 'unarchived', header: true },
+    ],
+    ['workflow runs', n(result.atRisk.runs), n(result.archived.runs), n(result.unarchived.runs)],
+    ['check runs', n(result.atRisk.checks), n(result.archived.checks), n(result.unarchived.checks)],
+    ['commit statuses', n(result.atRisk.statuses), n(result.archived.statuses), n(result.unarchived.statuses)],
+  ]);
+  para(summary, `${n(requests)} API request${requests === 1 ? '' : 's'} used.`);
+  await summary.write();
 }
 
 run().catch((err: unknown) => {
