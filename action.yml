@@ -1,5 +1,5 @@
 name: 'actions-attic'
-description: 'Archive workflow runs, checks and statuses into your repo before GitHub deletes them from 2026-10-01.'
+description: 'Archive workflow runs, checks and statuses into your repo before GitHub deletes them from 2026-10-01, and keep the runs npm provenance points at.'
 author: 'Booyaka101'
 branding:
   icon: 'archive'
