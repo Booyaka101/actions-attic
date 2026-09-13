@@ -9,3 +9,11 @@ Nothing new on <code>refs/attic/archive</code>; no commit made.
 <br>
 <table><tr><th>record type</th><th>new this run</th><th>total archived</th></tr><tr><td>workflow runs</td><td>0</td><td>14</td></tr><tr><td>check runs</td><td>0</td><td>112</td></tr><tr><td>commit statuses</td><td>0</td><td>0</td></tr></table>
 Backfill complete. 7 API requests used.
+<hr>
+<h3>actions-attic provenance: runner-drift</h3>
+6 published versions, 2 with provenance. Retention window 90 days (repository setting); from 2026-10-01, runs created before `2026-06-15T14:27:48Z` are deleted.
+<br>
+<table><tr><th>version</th><th>run</th><th>created</th><th>archived</th><th>at risk</th></tr><tr><td>1.2.1</td><td>[Booyaka101/runner-drift #34307443469/1](https://github.com/Booyaka101/runner-drift/actions/runs/34307443469/attempts/1)</td><td>2026-09-09</td><td>no</td><td>later</td></tr><tr><td>1.2.0</td><td>[Booyaka101/runner-drift #34305025325/1](https://github.com/Booyaka101/runner-drift/actions/runs/34305025325/attempts/1)</td><td>2026-09-09</td><td>no</td><td>later</td></tr></table>
+2 runs survive 2026-10-01 and age out of the retention window afterwards; archive them before then.
+<br>
+Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the pointer names. 3 API requests used.

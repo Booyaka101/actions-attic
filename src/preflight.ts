@@ -10,7 +10,7 @@
  * cheap; an empty one costs roughly what the backfill it recommends would.
  */
 
-import { Api, BudgetExhausted } from './api.js';
+import { Api, BudgetExhausted, type RetentionSettings } from './api.js';
 import type { Archive, CheckRecord, RunRecord, StatusRecord } from './archive.js';
 import { captureShas, captureWindow, makeContext } from './collect.js';
 import { type Month, indexToMonth, monthOf, monthToIndex, monthWindow } from './months.js';
@@ -28,9 +28,9 @@ export interface Tally {
   statuses: number;
 }
 
-export interface PreflightOptions {
-  api: Api;
-  archive: Archive;
+export interface RetentionOptions {
+  /** Null when no token is available; the platform default is used instead. */
+  api: Api | null;
   owner: string;
   repo: string;
   /** An explicit --retention-days value, which outranks the API. */
@@ -40,11 +40,22 @@ export interface PreflightOptions {
   warn?: (msg: string) => void;
 }
 
-export interface PreflightResult {
+export interface RetentionWindow {
   retentionDays: number;
   retentionSource: RetentionSource;
+  /** Records created before this instant are deleted once the change lands. */
   cutoffIso: string;
   deletionDate: string;
+  /** When the repository itself was created, when the API said. */
+  repoCreatedAt: string | null;
+}
+
+export interface PreflightOptions extends RetentionOptions {
+  api: Api;
+  archive: Archive;
+}
+
+export interface PreflightResult extends Omit<RetentionWindow, 'repoCreatedAt'> {
   atRisk: Tally;
   archived: Tally;
   unarchived: Tally & { total: number };
@@ -70,6 +81,67 @@ function outOfBudget(api: Api): Error {
   );
 }
 
+/**
+ * The window the 2026-10-01 change will enforce: an explicit override, else the
+ * repository's own artifact-and-log retention setting, else GitHub's platform
+ * default, clamped to the repository maximum and to 90 days when it is public.
+ *
+ * Shared by `preflight` and `provenance`, so there is one answer to what gets
+ * deleted and when.
+ */
+export async function resolveRetention(opts: RetentionOptions): Promise<RetentionWindow> {
+  const log = opts.log ?? (() => {});
+  const warn = opts.warn ?? (() => {});
+  const now = opts.now ?? new Date();
+
+  let isPublic = false;
+  let repoCreatedAt: string | null = null;
+  let settings: RetentionSettings | null = null;
+  if (opts.api) {
+    const info = await opts.api.request<{ visibility?: string; created_at?: string }>(
+      `/repos/${opts.owner}/${opts.repo}`,
+    );
+    isPublic = info.data?.visibility === 'public';
+    repoCreatedAt = typeof info.data?.created_at === 'string' ? info.data.created_at : null;
+    settings = await opts.api.getRetentionSettings(opts.owner, opts.repo);
+  }
+
+  let retentionDays: number;
+  let retentionSource: RetentionSource;
+  if (opts.retentionDays != null) {
+    retentionDays = opts.retentionDays;
+    retentionSource = 'flag';
+  } else if (settings) {
+    retentionDays = settings.days;
+    retentionSource = 'api';
+  } else {
+    retentionDays = DEFAULT_RETENTION_DAYS;
+    retentionSource = 'default';
+    warn(
+      (opts.api
+        ? 'the retention settings endpoint was not readable with this token (classic PATs need the repo scope); '
+        : "no GitHub token, so the repository's own retention setting could not be read; ") +
+        `assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`,
+    );
+  }
+  if (settings?.maximumAllowedDays != null && retentionDays > settings.maximumAllowedDays) {
+    log(`${retentionDays} days is above this repository's maximum of ${settings.maximumAllowedDays}; using the maximum`);
+    retentionDays = settings.maximumAllowedDays;
+  }
+  if (isPublic && retentionDays > PUBLIC_MAX_RETENTION_DAYS) {
+    log(`public repositories cap at ${PUBLIC_MAX_RETENTION_DAYS} days; clamping ${retentionDays}`);
+    retentionDays = PUBLIC_MAX_RETENTION_DAYS;
+  }
+
+  return {
+    retentionDays,
+    retentionSource,
+    cutoffIso: toInstant(now.getTime() - retentionDays * 86_400_000),
+    deletionDate: DELETION_DATE,
+    repoCreatedAt,
+  };
+}
+
 export async function runPreflight(opts: PreflightOptions): Promise<PreflightResult> {
   try {
     return await preflight(opts);
@@ -85,38 +157,9 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
   const log = opts.log ?? (() => {});
   const warn = opts.warn ?? (() => {});
   const { api, archive, owner, repo } = opts;
-  const now = opts.now ?? new Date();
 
-  const repoInfo = await api.request<{ visibility?: string; created_at?: string }>(`/repos/${owner}/${repo}`);
-  const isPublic = repoInfo.data?.visibility === 'public';
-  const settings = await api.getRetentionSettings(owner, repo);
-
-  let retentionDays: number;
-  let retentionSource: RetentionSource;
-  if (opts.retentionDays != null) {
-    retentionDays = opts.retentionDays;
-    retentionSource = 'flag';
-  } else if (settings) {
-    retentionDays = settings.days;
-    retentionSource = 'api';
-  } else {
-    retentionDays = DEFAULT_RETENTION_DAYS;
-    retentionSource = 'default';
-    warn(
-      'the retention settings endpoint was not readable with this token (classic PATs need the repo scope); ' +
-        `assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`,
-    );
-  }
-  if (settings?.maximumAllowedDays != null && retentionDays > settings.maximumAllowedDays) {
-    log(`${retentionDays} days is above this repository's maximum of ${settings.maximumAllowedDays}; using the maximum`);
-    retentionDays = settings.maximumAllowedDays;
-  }
-  if (isPublic && retentionDays > PUBLIC_MAX_RETENTION_DAYS) {
-    log(`public repositories cap at ${PUBLIC_MAX_RETENTION_DAYS} days; clamping ${retentionDays}`);
-    retentionDays = PUBLIC_MAX_RETENTION_DAYS;
-  }
-
-  const cutoffIso = toInstant(now.getTime() - retentionDays * 86_400_000);
+  const window = await resolveRetention(opts);
+  const { retentionDays, retentionSource, cutoffIso } = window;
   const cutoffMonth = monthOf(cutoffIso);
 
   const ctx = makeContext({ api, archive, owner, repo, skipChecks: false, skipStatuses: false, log, warn });
@@ -154,7 +197,7 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
   // the mismatched months pay for a full listing.
   let unarchivedRuns = 0;
   if (atRiskRuns !== archived.runs) {
-    const repoCreated = repoInfo.data?.created_at;
+    const repoCreated = window.repoCreatedAt;
     const candidates = [...archiveMonths];
     if (repoCreated) candidates.push(monthOf(repoCreated));
     const first = candidates.length ? candidates.reduce((a, b) => (a < b ? a : b)) : cutoffMonth;
@@ -243,17 +286,25 @@ function tally(t: Tally): string {
   return `${plural(t.runs, 'run')}, ${plural(t.checks, 'check run')}, ${plural(t.statuses, 'status', 'statuses')}`;
 }
 
-const SOURCES: Record<RetentionSource, string> = {
+/** How the window was decided, in the words the report uses. */
+export const RETENTION_SOURCES: Record<RetentionSource, string> = {
   flag: '--retention-days',
   api: 'repository setting',
   default: 'GitHub default',
 };
 
+/** The two header lines every retention report opens with. */
+export function retentionLines(window: Omit<RetentionWindow, 'repoCreatedAt'>, noun: string): string[] {
+  return [
+    `retention window: ${plural(window.retentionDays, 'day')} (${RETENTION_SOURCES[window.retentionSource]})`,
+    `from ${window.deletionDate}, ${noun} created before ${window.cutoffIso} are deleted`,
+  ];
+}
+
 /** Plain-text report. `nextCommand` is what to run when something is unarchived. */
 export function formatPreflight(result: PreflightResult, nextCommand: string): string {
   const lines = [
-    `retention window: ${plural(result.retentionDays, 'day')} (${SOURCES[result.retentionSource]})`,
-    `from ${result.deletionDate}, records created before ${result.cutoffIso} are deleted`,
+    ...retentionLines(result, 'records'),
     `at risk: ${tally(result.atRisk)}`,
     `already archived: ${tally(result.archived)}`,
   ];

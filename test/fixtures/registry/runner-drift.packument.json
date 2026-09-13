@@ -1,0 +1,42 @@
+{
+  "name": "runner-drift",
+  "dist-tags": {
+    "latest": "1.2.1"
+  },
+  "time": {
+    "created": "2026-08-05T03:03:52.787Z",
+    "modified": "2026-09-09T03:33:11.860Z",
+    "1.0.0": "2026-08-05T03:03:53.131Z",
+    "1.0.1": "2026-08-05T03:09:04.357Z",
+    "1.0.2": "2026-08-05T05:15:01.527Z",
+    "1.1.0": "2026-08-12T09:23:37.632Z",
+    "1.2.0": "2026-09-09T02:58:26.843Z",
+    "1.2.1": "2026-09-09T03:33:11.528Z"
+  },
+  "versions": {
+    "1.0.0": {},
+    "1.0.1": {},
+    "1.0.2": {},
+    "1.1.0": {},
+    "1.2.0": {
+      "dist": {
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/runner-drift@1.2.0",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      }
+    },
+    "1.2.1": {
+      "dist": {
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/runner-drift@1.2.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        }
+      }
+    }
+  }
+}

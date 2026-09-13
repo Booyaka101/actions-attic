@@ -1,5 +1,74 @@
 # Changelog
 
+## 1.4.0 - 2026-09-13
+
+### Added
+
+- `provenance <package>` command. A package published with npm provenance carries a signed
+  SLSA v1 statement whose `runDetails.metadata.invocationId` is the Actions run URL, built
+  as `server_url` + repository + `/actions/runs/` + `run_id` + `/attempts/` + `run_attempt`.
+  From 2026-10-01 that URL resolves to a 404 for every version whose run is older than the
+  retention window.
+
+  **Signature verification is unaffected.** Verifying a package never fetches the run, so
+  `npm audit signatures` and every sigstore check keep working exactly as before. What
+  breaks is the audit trail the pointer names: the one link from a published artifact back
+  to the job that built it, which is the part a supply-chain review actually follows.
+
+  The command reads the packument for the version list, the attestations endpoint for each
+  version that has one, decodes the DSSE payload, and cross-references the run id and
+  attempt against the archive using the same identity the archive keys on. A real session
+  against our own package:
+
+  ```
+  $ actions-attic provenance runner-drift --archive ./attic
+  runner-drift: 6 published versions, 2 with provenance
+  retention window: 90 days (repository setting)
+  from 2026-10-01, runs created before 2026-06-15T14:14:46Z are deleted
+
+  version  run                                     created     archived  at risk
+  1.2.1    Booyaka101/runner-drift #34307443469/1  2026-09-09  yes       no
+  1.2.0    Booyaka101/runner-drift #34305025325/1  2026-09-09  yes       no
+
+  Every provenance-referenced run for Booyaka101/runner-drift is in the attic.
+  ```
+
+  `--json` prints the structured result and nothing else, `--fail-on-unarchived` exits 1
+  while a referenced run is unarchived and due for deletion, `--all` lists the versions
+  published without provenance, `--version` checks one, and `--registry` points at a mirror.
+  A run in another repository is reported as out of scope, never as unarchived. A version
+  published before the backfill's oldest month says so instead of claiming the run is
+  missing. No GitHub token is needed for the registry half; without one it falls back to
+  GitHub's 90-day platform default and says so.
+- `show-run <id>` prints the archived record for a run id, with `--attempt` and `--json`,
+  and exits 1 when the id is not in the archive. Once the run's own page is gone, that is
+  the local answer a dead `html_url` no longer gives. It also takes the run URL itself,
+  since that is what a dangling provenance pointer gives you; an `/attempts/N` suffix picks
+  that attempt.
+- `path` and `display_title` on run records, both already in the payload the archiver
+  reads, so capturing them costs nothing. An archived run carried only `workflow_id`, which
+  stops resolving the moment the workflow file is deleted or renamed, and never told you
+  the path as it was at the time. `display_title` is the run's own title, which for a
+  release run is usually the only human-readable label it had.
+- The Action understands `mode: provenance`, with `package`, `registry` and `probe-all`
+  inputs, an `unarchived-total` output and a job summary table, working the same way
+  `mode: preflight` already does.
+- `resolveRetention()`, `retentionLines()`, `collectProvenance()`, `resolveProvenance()`,
+  `formatProvenance()` and the rest of the provenance surface on the library exports.
+  Preflight's retention resolution is now shared rather than duplicated.
+
+### Changed
+
+- `--version` after a command now belongs to that command, so `provenance pkg --version`
+  with no value is a usage error instead of quietly printing the tool version and exiting.
+  `actions-attic --version` and `actions-attic version` are unchanged.
+- The Action's preflight job summary names the retention source the way the report does,
+  `repository setting` rather than the raw `api`.
+- `schemaVersion` is 2. Records written by 1.x simply lack the two new fields, so they are
+  filled with `null` on read: a 1.3.0 archive keeps working untouched, and a caller can
+  tell "this build never captured it" from "captured as empty" without knowing which
+  version wrote the line. No rewalk, no migration.
+
 ## 1.3.0 - 2026-09-07
 
 ### Fixed

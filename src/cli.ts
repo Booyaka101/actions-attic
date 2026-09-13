@@ -9,7 +9,15 @@ import { FsBackend, RefBackend, normalizeRef } from './backend.js';
 import { computeFlake, formatFlake } from './flake.js';
 import { buildIndex } from './index.js';
 import { assertMonth } from './months.js';
-import { formatPreflight, runPreflight } from './preflight.js';
+import { formatPreflight, resolveRetention, runPreflight } from './preflight.js';
+import {
+  RegistryError,
+  collectProvenance,
+  formatProvenance,
+  parseInvocationId,
+  referencedRepos,
+  resolveProvenance,
+} from './provenance.js';
 import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 
 const require = createRequire(import.meta.url);
@@ -31,6 +39,8 @@ COMMANDS
   incremental <owner/repo>   Append new runs only
   pull <owner/repo>          Copy an archive ref down into a local directory
   preflight <owner/repo>     What the 2026-10-01 retention change will delete, and what is archived
+  provenance <package>       Which npm versions point signed provenance at a run, and is it archived
+  show-run <id>              Print the archived record for one run id
   build                      Build a SQLite index over the archive
   flake <workflow>           Flake rate for one workflow
   stats                      What the archive currently holds
@@ -46,13 +56,25 @@ FETCH OPTIONS (sync, backfill, incremental)
   --max-pages <n>            Page ceiling for an incremental catch-up (default: 50)
   --no-checks                Skip check runs
   --no-statuses              Skip commit statuses
-  --ref <ref>                Archive ref for \`pull\` and \`preflight\` (default: refs/attic/archive)
+  --ref <ref>                Archive ref for \`pull\`, \`preflight\` and \`provenance\` (default: refs/attic/archive)
   --api <url>                API base URL (default: https://api.github.com)
 
 PREFLIGHT OPTIONS
   --retention-days <n>       Override the retention window instead of reading it from the API
   --fail-on-unarchived       Exit 1 when anything at risk is not archived yet
   --archive <dir>            Compare against a local archive directory instead of the archive ref
+
+PROVENANCE OPTIONS
+  --repo <owner/repo>        Repository the archive covers (default: from the archive, else the provenance)
+  --version <v>              Check one published version instead of all of them
+  --all                      List versions published without provenance too
+  --probe-all                Ask the attestations endpoint about every version, not only advertised ones
+  --registry <url>           npm registry (default: https://registry.npmjs.org)
+  --fail-on-unarchived       Exit 1 when a referenced run is unarchived and due for deletion
+
+SHOW-RUN OPTIONS
+  <id>                       A run id, or the run URL a dangling provenance pointer names
+  --attempt <n>              Which attempt to print (default: the highest archived)
 
 READ OPTIONS
   --since <YYYY-MM>          Earliest month to include
@@ -65,6 +87,8 @@ READ OPTIONS
 EXAMPLES
   actions-attic sync cli/cli --archive ./attic --months 14
   actions-attic preflight myorg/myrepo --fail-on-unarchived
+  actions-attic provenance my-package --archive ./attic
+  actions-attic show-run 34307443469 --archive ./attic
   actions-attic pull myorg/myrepo --archive ./attic
   actions-attic build --archive ./attic
   actions-attic flake build-linux --since 2025-09 --archive ./attic
@@ -156,7 +180,7 @@ export class UsageError extends Error {
   }
 }
 
-function resolveToken(args: Args): string {
+function findToken(args: Args): string | null {
   const explicit = args.flags.get('token');
   if (typeof explicit === 'string' && explicit) return explicit;
   for (const key of ['GITHUB_TOKEN', 'GH_TOKEN', 'ACTIONS_ATTIC_TOKEN']) {
@@ -170,12 +194,28 @@ function resolveToken(args: Args): string {
       return token;
     }
   } catch {
-    // gh is not installed or not logged in; fall through to the explicit message
+    // gh is not installed or not logged in; the caller decides whether that is fatal
   }
+  return null;
+}
+
+function resolveToken(args: Args): string {
+  const token = findToken(args);
+  if (token) return token;
   throw new UsageError(
     'no GitHub token found. Pass --token, set GITHUB_TOKEN, or run `gh auth login`.\n' +
       'The token needs read access to actions, checks and statuses on the repository.',
   );
+}
+
+function githubApi(args: Args, token: string): Api {
+  return new Api({
+    token,
+    maxRequests: int(args, 'max-requests', 800, 1, 1_000_000),
+    baseUrl: str(args, 'api', process.env.GITHUB_API_URL ?? 'https://api.github.com'),
+    log: (m) => process.stderr.write(`${m}\n`),
+    warn: (m) => process.stderr.write(`warning: ${m}\n`),
+  });
 }
 
 function requireRepo(args: Args): { owner: string; repo: string } {
@@ -198,13 +238,7 @@ async function openArchive(dir: string, repo = 'unknown/unknown'): Promise<{ arc
 async function cmdSync(args: Args, mode: Mode): Promise<number> {
   const { owner, repo } = requireRepo(args);
   const dir = resolve(str(args, 'archive', 'attic'));
-  const api = new Api({
-    token: resolveToken(args),
-    maxRequests: int(args, 'max-requests', 800, 1, 1_000_000),
-    baseUrl: str(args, 'api', process.env.GITHUB_API_URL ?? 'https://api.github.com'),
-    log: (m) => process.stderr.write(`${m}\n`),
-    warn: (m) => process.stderr.write(`warning: ${m}\n`),
-  });
+  const api = githubApi(args, resolveToken(args));
 
   const summary = await runArchive({
     api,
@@ -283,15 +317,7 @@ async function cmdPull(args: Args): Promise<number> {
   const { owner, repo } = requireRepo(args);
   const dir = resolve(str(args, 'archive', 'attic'));
   const ref = asUsage(() => normalizeRef(str(args, 'ref', 'refs/attic/archive')));
-  const api = new Api({
-    token: resolveToken(args),
-    maxRequests: int(args, 'max-requests', 800, 1, 1_000_000),
-    baseUrl: str(args, 'api', process.env.GITHUB_API_URL ?? 'https://api.github.com'),
-    log: (m) => process.stderr.write(`${m}
-`),
-    warn: (m) => process.stderr.write(`warning: ${m}
-`),
-  });
+  const api = githubApi(args, resolveToken(args));
 
   const remote = await RefBackend.open(api, owner, repo, ref);
   if (remote.isNew) {
@@ -332,13 +358,7 @@ async function cmdPreflight(args: Args): Promise<number> {
   const { owner, repo } = requireRepo(args);
   const retentionRaw = args.flags.get('retention-days');
   const retentionDays = retentionRaw === undefined ? null : int(args, 'retention-days', 90, 1, 3650);
-  const api = new Api({
-    token: resolveToken(args),
-    maxRequests: int(args, 'max-requests', 800, 1, 1_000_000),
-    baseUrl: str(args, 'api', process.env.GITHUB_API_URL ?? 'https://api.github.com'),
-    log: (m) => process.stderr.write(`${m}\n`),
-    warn: (m) => process.stderr.write(`warning: ${m}\n`),
-  });
+  const api = githubApi(args, resolveToken(args));
 
   let archive: Archive;
   let next: string;
@@ -369,6 +389,139 @@ async function cmdPreflight(args: Args): Promise<number> {
   if (args.flags.get('json') === true) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   else process.stdout.write(`${formatPreflight(result, next)}\n`);
   return args.flags.get('fail-on-unarchived') === true && result.unarchived.total > 0 ? 1 : 0;
+}
+
+/**
+ * Which published versions of an npm package carry a signed pointer at a
+ * workflow run, and whether the attic still holds it. The registry half needs
+ * no credentials; a token only buys the repository's real retention setting and
+ * the archive ref when --archive is not given.
+ */
+async function cmdProvenance(args: Args): Promise<number> {
+  const spec = args.positional[0];
+  if (!spec) {
+    throw new UsageError('provenance needs a package, e.g. `actions-attic provenance runner-drift --archive ./attic`');
+  }
+  const stderr = (m: string) => process.stderr.write(`${m}\n`);
+  const warn = (m: string) => process.stderr.write(`warning: ${m}\n`);
+
+  const collected = await collectProvenance(spec, {
+    version: args.flags.get('version') === undefined ? null : str(args, 'version', ''),
+    probeAll: args.flags.get('probe-all') === true,
+    registry: str(args, 'registry', process.env.NPM_CONFIG_REGISTRY ?? 'https://registry.npmjs.org'),
+    log: stderr,
+    warn,
+  });
+
+  const repoFlag = args.flags.get('repo');
+  let scope = typeof repoFlag === 'string' ? asUsage(() => parseRepo(repoFlag)) : null;
+  const token = findToken(args);
+  const api = token === null ? null : githubApi(args, token);
+  const localDir = args.flags.get('archive');
+
+  let archive: Archive | null = null;
+  let where = '';
+  if (localDir !== undefined) {
+    if (typeof localDir !== 'string') throw new UsageError('--archive needs a value');
+    const dir = resolve(localDir);
+    archive = await Archive.open(await FsBackend.open(dir), 'unknown/unknown');
+    scope ??= archiveRepo(archive);
+    where = ` --archive ${display(dir)}`;
+  } else {
+    scope ??= soleRepo(collected, warn);
+    if (!api) {
+      warn('no GitHub token, so the archive ref cannot be read. Pass --archive <dir>, or --token.');
+    } else if (scope) {
+      const ref = asUsage(() => normalizeRef(str(args, 'ref', 'refs/attic/archive')));
+      const backend = await RefBackend.open(api, scope.owner, scope.repo, ref);
+      if (backend.isNew) stderr(`${scope.owner}/${scope.repo} has no archive at ${ref} yet`);
+      archive = await Archive.open(backend, `${scope.owner}/${scope.repo}`);
+    }
+  }
+
+  const retentionRaw = args.flags.get('retention-days');
+  const window = await resolveRetention({
+    api: scope ? api : null,
+    owner: scope?.owner ?? '',
+    repo: scope?.repo ?? '',
+    retentionDays: retentionRaw === undefined ? null : int(args, 'retention-days', 90, 1, 3650),
+    log: stderr,
+    warn,
+  });
+
+  const result = await resolveProvenance({ collected, archive, scope, window });
+
+  if (args.flags.get('json') === true) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  } else {
+    const next = `actions-attic backfill ${result.repo ?? '<owner/repo>'}${where}`;
+    process.stdout.write(`${formatProvenance(result, next, args.flags.get('all') === true)}\n`);
+  }
+  return args.flags.get('fail-on-unarchived') === true && result.unarchivedAtRisk > 0 ? 1 : 0;
+}
+
+
+function archiveRepo(archive: Archive): { owner: string; repo: string } | null {
+  const repo = archive.manifest.repo;
+  if (!repo || repo === 'unknown/unknown') return null;
+  try {
+    return parseRepo(repo);
+  } catch {
+    return null;
+  }
+}
+
+/** With no archive to ask, the provenance itself names the repository. */
+function soleRepo(
+  collected: Awaited<ReturnType<typeof collectProvenance>>,
+  warn: (msg: string) => void,
+): { owner: string; repo: string } | null {
+  const repos = referencedRepos(collected);
+  if (repos.length === 1) return parseRepo(repos[0]);
+  if (repos.length > 1) {
+    warn(`this package's provenance names ${repos.length} repositories (${repos.join(', ')}); pass --repo to pick one`);
+  }
+  return null;
+}
+
+/** The local answer for a run whose html_url the retention change has deleted. */
+async function cmdShowRun(args: Args): Promise<number> {
+  const raw = args.positional[0];
+  if (!raw) throw new UsageError('show-run needs a run id, e.g. `actions-attic show-run 34307443469 --archive ./attic`');
+
+  // The run URL is what a dangling provenance pointer hands you, so paste it
+  // straight in. `/attempts/N` in the URL picks that attempt.
+  const fromUrl = raw.includes('://') ? parseInvocationId(raw) : null;
+  if (raw.includes('://') && !fromUrl) throw new UsageError(`"${raw}" is not an Actions run URL`);
+  const id = fromUrl ? fromUrl.runId : Number(raw);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new UsageError(`run id must be a positive integer, got "${raw}"`);
+
+  const dir = resolve(str(args, 'archive', 'attic'));
+  const { archive } = await openArchive(dir);
+  const attempts = await archive.runAttempts(id);
+  if (attempts.length === 0) {
+    process.stderr.write(`run ${id} is not in the archive at ${display(dir)}\n`);
+    return 1;
+  }
+
+  const held = attempts.map((r) => r.run_attempt ?? 1);
+  const urlAttempt = fromUrl && /\/attempts\/\d+\/?$/.test(raw) ? fromUrl.attempt : null;
+  const wanted =
+    args.flags.get('attempt') === undefined ? urlAttempt : int(args, 'attempt', 1, 1, 1_000_000);
+  const record = wanted === null ? attempts[attempts.length - 1] : attempts.find((r) => (r.run_attempt ?? 1) === wanted);
+  if (!record) {
+    process.stderr.write(`run ${id} has no attempt ${wanted} in the archive; it holds attempt ${held.join(', ')}\n`);
+    return 1;
+  }
+
+  if (args.flags.get('json') === true) {
+    process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);
+    return 0;
+  }
+  const rows = Object.entries(record).map(([key, value]) => [key, value === null ? '-' : String(value)]);
+  process.stdout.write(`${table(rows as [string, string][])}\n`);
+  if (held.length > 1) process.stdout.write(`  ${plural(held.length, 'attempt')} archived: ${held.join(', ')}\n`);
+  return 0;
 }
 
 async function cmdBuild(args: Args): Promise<number> {
@@ -506,7 +659,10 @@ async function cmdRuns(args: Args): Promise<number> {
 
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
-  if (args.flags.get('version') === true || args.flags.get('v') === true || args.command === 'version') {
+  // `--version` after a command belongs to that command, so `provenance pkg --version`
+  // with no value is that command's usage error, not a silent version print.
+  const wantsVersion = args.flags.get('version') === true || args.flags.get('v') === true;
+  if (args.command === 'version' || (args.command === null && wantsVersion)) {
     process.stdout.write(`${pkg.version}\n`);
     return 0;
   }
@@ -526,6 +682,10 @@ export async function main(argv: string[]): Promise<number> {
       return cmdPull(args);
     case 'preflight':
       return cmdPreflight(args);
+    case 'provenance':
+      return cmdProvenance(args);
+    case 'show-run':
+      return cmdShowRun(args);
     case 'build':
       return cmdBuild(args);
     case 'flake':
@@ -551,7 +711,7 @@ export async function cli(argv: string[]): Promise<number> {
       process.stderr.write(`stopped early: ${err.reason}\nRe-run later to resume from the checkpoint.\n`);
       return 0;
     }
-    if (err instanceof NetworkError) {
+    if (err instanceof NetworkError || err instanceof RegistryError) {
       process.stderr.write(`${err.message}\n`);
       return 1;
     }

@@ -38,6 +38,8 @@ CREATE TABLE runs (
   triggering_actor TEXT,
   run_number INTEGER,
   workflow_id INTEGER,
+  path TEXT,
+  display_title TEXT,
   html_url TEXT,
   PRIMARY KEY (id, run_attempt)
 );
@@ -45,6 +47,7 @@ CREATE INDEX runs_name ON runs (name);
 CREATE INDEX runs_created ON runs (created_at);
 CREATE INDEX runs_sha ON runs (head_sha);
 CREATE INDEX runs_conclusion ON runs (conclusion);
+CREATE INDEX runs_path ON runs (path);
 
 CREATE TABLE checks (
   id INTEGER PRIMARY KEY,
@@ -108,8 +111,9 @@ export function buildIndex(dir: string, dbPath: string): IndexResult {
 
     const insertRun = db.prepare(
       `INSERT OR REPLACE INTO runs (id, run_attempt, month, name, status, conclusion, created_at, updated_at,
-        run_started_at, head_sha, head_branch, event, actor, triggering_actor, run_number, workflow_id, html_url)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        run_started_at, head_sha, head_branch, event, actor, triggering_actor, run_number, workflow_id,
+        path, display_title, html_url)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     );
     const insertCheck = db.prepare(
       `INSERT OR REPLACE INTO checks (id, month, name, status, conclusion, started_at, completed_at, head_sha, app)
@@ -126,7 +130,7 @@ export function buildIndex(dir: string, dbPath: string): IndexResult {
         insertRun.run(
           r.id, r.run_attempt ?? 1, month, r.name, r.status, r.conclusion, r.created_at, r.updated_at,
           r.run_started_at, r.head_sha, r.head_branch, r.event, r.actor, r.triggering_actor,
-          r.run_number, r.workflow_id, r.html_url,
+          r.run_number, r.workflow_id, r.path ?? null, r.display_title ?? null, r.html_url,
         );
         counts.runs++;
       }

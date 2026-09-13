@@ -4,7 +4,21 @@ import * as core from '@actions/core';
 import { Api, BudgetExhausted, HttpError, NetworkError } from './api.js';
 import { Archive } from './archive.js';
 import { RefBackend, normalizeRef } from './backend.js';
-import { type PreflightResult, formatPreflight, runPreflight } from './preflight.js';
+import {
+  type PreflightResult,
+  RETENTION_SOURCES,
+  formatPreflight,
+  resolveRetention,
+  runPreflight,
+} from './preflight.js';
+import {
+  type ProvenanceResult,
+  collectProvenance,
+  formatProvenance,
+  resolveProvenance,
+  stateCells,
+  verdict as provenanceVerdict,
+} from './provenance.js';
 import { MODES, type Mode, parseRepo, runArchive } from './run.js';
 
 function input(name: string, fallback: string): string {
@@ -40,8 +54,9 @@ export async function run(): Promise<void> {
   }
 
   const mode = input('mode', 'auto');
-  if (mode !== 'preflight' && !MODES.includes(mode as Mode)) {
-    core.setFailed(`input "mode" must be one of ${MODES.join(', ')}, preflight, got "${mode}"`);
+  const reportOnly = mode === 'preflight' || mode === 'provenance';
+  if (!reportOnly && !MODES.includes(mode as Mode)) {
+    core.setFailed(`input "mode" must be one of ${MODES.join(', ')}, preflight, provenance, got "${mode}"`);
     return;
   }
 
@@ -88,12 +103,16 @@ export async function run(): Promise<void> {
   });
   if (backend.isNew) {
     core.info(
-      mode === 'preflight' ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`,
+      reportOnly ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`,
     );
   }
 
   if (mode === 'preflight') {
     await preflightRun(api, backend, owner, repo);
+    return;
+  }
+  if (mode === 'provenance') {
+    await provenanceRun(api, backend, owner, repo);
     return;
   }
 
@@ -203,6 +222,104 @@ async function preflightRun(api: Api, backend: RefBackend, owner: string, repo: 
   }
 }
 
+/**
+ * Which published versions of an npm package point provenance at a run this
+ * archive is supposed to hold. Reads the archive, never writes it.
+ */
+async function provenanceRun(api: Api, backend: RefBackend, owner: string, repo: string): Promise<void> {
+  const spec = core.getInput('package').trim();
+  if (!spec) {
+    core.setFailed('mode: provenance needs a `package` input, e.g. `package: my-package`.');
+    return;
+  }
+  const retentionRaw = core.getInput('retention-days').trim();
+  const retentionDays = retentionRaw === '' ? null : intInput('retention-days', 90, 1, 3650);
+  const failOn = boolInput('fail-on-unarchived');
+
+  const collected = await collectProvenance(spec, {
+    registry: input('registry', 'https://registry.npmjs.org'),
+    probeAll: boolInput('probe-all'),
+    log: (m) => core.info(m),
+    warn: (m) => core.warning(m),
+  });
+  const archive = await Archive.open(backend, `${owner}/${repo}`);
+  const window = await resolveRetention({
+    api,
+    owner,
+    repo,
+    retentionDays,
+    log: (m) => core.info(m),
+    warn: (m) => core.warning(m),
+  });
+  const result = await resolveProvenance({ collected, archive, scope: { owner, repo }, window });
+
+  core.setOutput('retention-days', result.retentionDays);
+  core.setOutput('retention-source', result.retentionSource);
+  core.setOutput('unarchived-total', result.unarchivedAtRisk);
+  core.setOutput('provenance-json', JSON.stringify(result));
+
+  const next = 'this workflow with mode auto or backfill until it reports backfill complete';
+  core.info(formatProvenance(result, next));
+  await writeProvenanceSummary(result, api.requests, next);
+
+  if (failOn && result.unarchivedAtRisk > 0) {
+    core.setFailed(
+      `${result.unarchivedAtRisk.toLocaleString('en-US')} provenance-referenced run${
+        result.unarchivedAtRisk === 1 ? ' is' : 's are'
+      } not archived and will be deleted on ${result.deletionDate}. Run ${next}.`,
+    );
+  }
+}
+
+async function writeProvenanceSummary(
+  result: ProvenanceResult,
+  requests: number,
+  nextCommand: string,
+): Promise<void> {
+  const n = (value: number) => value.toLocaleString('en-US');
+  const rows: Parameters<typeof core.summary.addTable>[0] = [
+    [
+      { data: 'version', header: true },
+      { data: 'run', header: true },
+      { data: 'created', header: true },
+      { data: 'archived', header: true },
+      { data: 'at risk', header: true },
+    ],
+  ];
+  for (const r of result.reports) {
+    if (r.state === 'no-provenance') continue;
+    const cells = stateCells(r);
+    rows.push([
+      r.version,
+      r.run ? `[${r.run.owner}/${r.run.repo} #${r.run.runId}/${r.run.attempt}](${r.run.url})` : '-',
+      (r.runCreatedAt ?? r.publishedAt ?? '-').slice(0, 10),
+      cells.archived,
+      cells.atRisk === 'YES' ? '**YES**' : cells.atRisk,
+    ]);
+  }
+
+  const summary = core.summary
+    .addHeading(`actions-attic provenance: ${result.package}`, 3)
+    .addRaw(
+      `${n(result.versions)} published version${result.versions === 1 ? '' : 's'}, ` +
+        `${n(result.withProvenance)} with provenance. Retention window ${n(result.retentionDays)} days ` +
+        `(${RETENTION_SOURCES[result.retentionSource]}); from ${result.deletionDate}, ` +
+        `runs created before \`${result.cutoffIso}\` are deleted.`,
+      true,
+    )
+    .addBreak();
+  if (rows.length > 1) summary.addTable(rows);
+  await summary
+    .addRaw(provenanceVerdict(result, nextCommand).join(' '), true)
+    .addBreak()
+    .addRaw(
+      'Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the ' +
+        `pointer names. ${n(requests)} API request${requests === 1 ? '' : 's'} used.`,
+      true,
+    )
+    .write();
+}
+
 async function writePreflightSummary(result: PreflightResult, requests: number): Promise<void> {
   const n = (value: number) => value.toLocaleString('en-US');
   const verdict =
@@ -212,7 +329,7 @@ async function writePreflightSummary(result: PreflightResult, requests: number):
   await core.summary
     .addHeading('actions-attic preflight', 3)
     .addRaw(
-      `Retention window: ${n(result.retentionDays)} days (${result.retentionSource}). ` +
+      `Retention window: ${n(result.retentionDays)} days (${RETENTION_SOURCES[result.retentionSource]}). ` +
         `From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
       true,
     )

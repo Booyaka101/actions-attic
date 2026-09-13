@@ -1202,19 +1202,19 @@ var require_util = __commonJS({
       let key;
       let val;
       let kLen = 0;
-      for (let n3 = 0; n3 < headers.length; n3 += 2) {
-        key = headers[n3];
-        val = headers[n3 + 1];
+      for (let n4 = 0; n4 < headers.length; n4 += 2) {
+        key = headers[n4];
+        val = headers[n4 + 1];
         typeof key !== "string" && (key = key.toString());
         typeof val !== "string" && (val = val.toString("utf8"));
         kLen = key.length;
         if (kLen === 14 && key[7] === "-" && (key === "content-length" || key.toLowerCase() === "content-length")) {
           hasContentLength = true;
         } else if (kLen === 19 && key[7] === "-" && (key === "content-disposition" || key.toLowerCase() === "content-disposition")) {
-          contentDispositionIdx = n3 + 1;
+          contentDispositionIdx = n4 + 1;
         }
-        ret[n3] = key;
-        ret[n3 + 1] = val;
+        ret[n4] = key;
+        ret[n4 + 1] = val;
       }
       if (hasContentLength && contentDispositionIdx !== -1) {
         ret[contentDispositionIdx] = Buffer.from(ret[contentDispositionIdx]).toString("latin1");
@@ -1382,12 +1382,12 @@ var require_util = __commonJS({
       }
       obj[kListeners] = null;
     }
-    function errorRequest(client, request, err) {
+    function errorRequest(client2, request, err) {
       try {
         request.onError(err);
         assert(request.aborted);
       } catch (err2) {
-        client.emit("error", err2);
+        client2.emit("error", err2);
       }
     }
     var kEnumerableProperty = /* @__PURE__ */ Object.create(null);
@@ -3603,8 +3603,8 @@ var require_webidl = __commonJS({
       return new TypeError(`${message.header}: ${message.message}`);
     };
     webidl.errors.conversionFailed = function(context) {
-      const plural2 = context.types.length === 1 ? "" : " one of";
-      const message = `${context.argument} could not be converted to${plural2}: ${context.types.join(", ")}.`;
+      const plural3 = context.types.length === 1 ? "" : " one of";
+      const message = `${context.argument} could not be converted to${plural3}: ${context.types.join(", ")}.`;
       return webidl.errors.exception({
         header: context.prefix,
         message
@@ -3726,9 +3726,9 @@ var require_webidl = __commonJS({
       }
       return x;
     };
-    webidl.util.IntegerPart = function(n3) {
-      const r = Math.floor(Math.abs(n3));
-      if (n3 < 0) {
+    webidl.util.IntegerPart = function(n4) {
+      const r = Math.floor(Math.abs(n4));
+      if (n4 < 0) {
         return -1 * r;
       }
       return r;
@@ -4900,12 +4900,12 @@ var require_file = __commonJS({
     var { webidl } = require_webidl();
     var FileLike = class _FileLike {
       constructor(blobLike, fileName, options = {}) {
-        const n3 = fileName;
+        const n4 = fileName;
         const t = options.type;
         const d = options.lastModified ?? Date.now();
         this[kState] = {
           blobLike,
-          name: n3,
+          name: n4,
           type: t,
           lastModified: d
         };
@@ -5792,11 +5792,11 @@ var require_client_h1 = __commonJS({
     var TIMEOUT_BODY = 4 | USE_FAST_TIMER;
     var TIMEOUT_KEEP_ALIVE = 8 | USE_NATIVE_TIMER;
     var Parser = class {
-      constructor(client, socket, { exports: exports3 }) {
-        assert(Number.isFinite(client[kMaxHeadersSize]) && client[kMaxHeadersSize] > 0);
+      constructor(client2, socket, { exports: exports3 }) {
+        assert(Number.isFinite(client2[kMaxHeadersSize]) && client2[kMaxHeadersSize] > 0);
         this.llhttp = exports3;
         this.ptr = this.llhttp.llhttp_alloc(constants3.TYPE.RESPONSE);
-        this.client = client;
+        this.client = client2;
         this.socket = socket;
         this.timeout = null;
         this.timeoutValue = null;
@@ -5806,7 +5806,7 @@ var require_client_h1 = __commonJS({
         this.upgrade = false;
         this.headers = [];
         this.headersSize = 0;
-        this.headersMaxSize = client[kMaxHeadersSize];
+        this.headersMaxSize = client2[kMaxHeadersSize];
         this.shouldKeepAlive = false;
         this.paused = false;
         this.resume = this.resume.bind(this);
@@ -5814,7 +5814,7 @@ var require_client_h1 = __commonJS({
         this.keepAlive = "";
         this.contentLength = "";
         this.connection = "";
-        this.maxResponseSize = client[kMaxResponseSize];
+        this.maxResponseSize = client2[kMaxResponseSize];
       }
       setTimeout(delay, type) {
         if (delay !== this.timeoutValue || type & USE_FAST_TIMER ^ this.timeoutType & USE_FAST_TIMER) {
@@ -5954,15 +5954,15 @@ var require_client_h1 = __commonJS({
         this.statusText = buf.toString();
       }
       onMessageBegin() {
-        const { socket, client } = this;
+        const { socket, client: client2 } = this;
         if (socket.destroyed) {
           return -1;
         }
-        if (client[kRunning] === 0) {
+        if (client2[kRunning] === 0) {
           util.destroy(socket, new SocketError("bad response", util.getSocketInfo(socket)));
           return -1;
         }
-        const request = client[kQueue][client[kRunningIdx]];
+        const request = client2[kQueue][client2[kRunningIdx]];
         if (!request) {
           return -1;
         }
@@ -6005,13 +6005,13 @@ var require_client_h1 = __commonJS({
         }
       }
       onUpgrade(head) {
-        const { upgrade, client, socket, headers, statusCode } = this;
+        const { upgrade, client: client2, socket, headers, statusCode } = this;
         assert(upgrade);
-        assert(client[kSocket] === socket);
+        assert(client2[kSocket] === socket);
         assert(!socket.destroyed);
         assert(!this.paused);
         assert((headers.length & 1) === 0);
-        const request = client[kQueue][client[kRunningIdx]];
+        const request = client2[kQueue][client2[kRunningIdx]];
         assert(request);
         assert(request.upgrade || request.method === "CONNECT");
         this.statusCode = null;
@@ -6025,27 +6025,27 @@ var require_client_h1 = __commonJS({
         socket[kClient] = null;
         socket[kError] = null;
         removeAllListeners(socket);
-        client[kSocket] = null;
-        client[kHTTPContext] = null;
-        client[kQueue][client[kRunningIdx]++] = null;
-        client.emit("disconnect", client[kUrl], [client], new InformationalError("upgrade"));
+        client2[kSocket] = null;
+        client2[kHTTPContext] = null;
+        client2[kQueue][client2[kRunningIdx]++] = null;
+        client2.emit("disconnect", client2[kUrl], [client2], new InformationalError("upgrade"));
         try {
           request.onUpgrade(statusCode, headers, socket);
         } catch (err) {
           util.destroy(socket, err);
         }
-        client[kResume]();
+        client2[kResume]();
       }
       onHeadersComplete(statusCode, upgrade, shouldKeepAlive) {
-        const { client, socket, headers, statusText } = this;
+        const { client: client2, socket, headers, statusText } = this;
         if (socket.destroyed) {
           return -1;
         }
-        if (client[kRunning] === 0) {
+        if (client2[kRunning] === 0) {
           util.destroy(socket, new SocketError("bad response", util.getSocketInfo(socket)));
           return -1;
         }
-        const request = client[kQueue][client[kRunningIdx]];
+        const request = client2[kQueue][client2[kRunningIdx]];
         if (!request) {
           return -1;
         }
@@ -6064,7 +6064,7 @@ var require_client_h1 = __commonJS({
         this.shouldKeepAlive = shouldKeepAlive || // Override llhttp value which does not allow keepAlive for HEAD.
         request.method === "HEAD" && !socket[kReset] && this.connection.toLowerCase() === "keep-alive";
         if (this.statusCode >= 200) {
-          const bodyTimeout = request.bodyTimeout != null ? request.bodyTimeout : client[kBodyTimeout];
+          const bodyTimeout = request.bodyTimeout != null ? request.bodyTimeout : client2[kBodyTimeout];
           this.setTimeout(bodyTimeout, TIMEOUT_BODY);
         } else if (this.timeout) {
           if (this.timeout.refresh) {
@@ -6072,32 +6072,32 @@ var require_client_h1 = __commonJS({
           }
         }
         if (request.method === "CONNECT") {
-          assert(client[kRunning] === 1);
+          assert(client2[kRunning] === 1);
           this.upgrade = true;
           return 2;
         }
         if (upgrade) {
-          assert(client[kRunning] === 1);
+          assert(client2[kRunning] === 1);
           this.upgrade = true;
           return 2;
         }
         assert((this.headers.length & 1) === 0);
         this.headers = [];
         this.headersSize = 0;
-        if (this.shouldKeepAlive && client[kPipelining]) {
+        if (this.shouldKeepAlive && client2[kPipelining]) {
           const keepAliveTimeout = this.keepAlive ? util.parseKeepAliveTimeout(this.keepAlive) : null;
           if (keepAliveTimeout != null) {
             const timeout = Math.min(
-              keepAliveTimeout - client[kKeepAliveTimeoutThreshold],
-              client[kKeepAliveMaxTimeout]
+              keepAliveTimeout - client2[kKeepAliveTimeoutThreshold],
+              client2[kKeepAliveMaxTimeout]
             );
             if (timeout <= 0) {
               socket[kReset] = true;
             } else {
-              client[kKeepAliveTimeoutValue] = timeout;
+              client2[kKeepAliveTimeoutValue] = timeout;
             }
           } else {
-            client[kKeepAliveTimeoutValue] = client[kKeepAliveDefaultTimeout];
+            client2[kKeepAliveTimeoutValue] = client2[kKeepAliveDefaultTimeout];
           }
         } else {
           socket[kReset] = true;
@@ -6114,16 +6114,16 @@ var require_client_h1 = __commonJS({
         }
         if (socket[kBlocking]) {
           socket[kBlocking] = false;
-          client[kResume]();
+          client2[kResume]();
         }
         return pause ? constants3.ERROR.PAUSED : 0;
       }
       onBody(buf) {
-        const { client, socket, statusCode, maxResponseSize } = this;
+        const { client: client2, socket, statusCode, maxResponseSize } = this;
         if (socket.destroyed) {
           return -1;
         }
-        const request = client[kQueue][client[kRunningIdx]];
+        const request = client2[kQueue][client2[kRunningIdx]];
         assert(request);
         assert(this.timeoutType === TIMEOUT_BODY);
         if (this.timeout) {
@@ -6142,7 +6142,7 @@ var require_client_h1 = __commonJS({
         }
       }
       onMessageComplete() {
-        const { client, socket, statusCode, upgrade, headers, contentLength, bytesRead, shouldKeepAlive } = this;
+        const { client: client2, socket, statusCode, upgrade, headers, contentLength, bytesRead, shouldKeepAlive } = this;
         if (socket.destroyed && (!statusCode || shouldKeepAlive)) {
           return -1;
         }
@@ -6151,7 +6151,7 @@ var require_client_h1 = __commonJS({
         }
         assert(statusCode >= 100);
         assert((this.headers.length & 1) === 0);
-        const request = client[kQueue][client[kRunningIdx]];
+        const request = client2[kQueue][client2[kRunningIdx]];
         assert(request);
         this.statusCode = null;
         this.statusText = "";
@@ -6169,29 +6169,29 @@ var require_client_h1 = __commonJS({
           return -1;
         }
         request.onComplete(headers);
-        client[kQueue][client[kRunningIdx]++] = null;
+        client2[kQueue][client2[kRunningIdx]++] = null;
         socket[kSocketUsed] = true;
         if (socket[kWriting]) {
-          assert(client[kRunning] === 0);
+          assert(client2[kRunning] === 0);
           util.destroy(socket, new InformationalError("reset"));
           return constants3.ERROR.PAUSED;
         } else if (!shouldKeepAlive) {
           util.destroy(socket, new InformationalError("reset"));
           return constants3.ERROR.PAUSED;
-        } else if (socket[kReset] && client[kRunning] === 0) {
+        } else if (socket[kReset] && client2[kRunning] === 0) {
           util.destroy(socket, new InformationalError("reset"));
           return constants3.ERROR.PAUSED;
-        } else if (client[kPipelining] == null || client[kPipelining] === 1) {
-          setImmediate(() => client[kResume]());
+        } else if (client2[kPipelining] == null || client2[kPipelining] === 1) {
+          setImmediate(() => client2[kResume]());
         } else {
-          client[kResume]();
+          client2[kResume]();
         }
       }
     };
     function onParserTimeout(parser) {
-      const { socket, timeoutType, client, paused } = parser.deref();
+      const { socket, timeoutType, client: client2, paused } = parser.deref();
       if (timeoutType === TIMEOUT_HEADERS) {
-        if (!socket[kWriting] || socket.writableNeedDrain || client[kRunning] > 1) {
+        if (!socket[kWriting] || socket.writableNeedDrain || client2[kRunning] > 1) {
           assert(!paused, "cannot be paused while waiting for headers");
           util.destroy(socket, new HeadersTimeoutError());
         }
@@ -6200,12 +6200,12 @@ var require_client_h1 = __commonJS({
           util.destroy(socket, new BodyTimeoutError());
         }
       } else if (timeoutType === TIMEOUT_KEEP_ALIVE) {
-        assert(client[kRunning] === 0 && client[kKeepAliveTimeoutValue]);
+        assert(client2[kRunning] === 0 && client2[kKeepAliveTimeoutValue]);
         util.destroy(socket, new InformationalError("socket idle timeout"));
       }
     }
-    async function connectH1(client, socket) {
-      client[kSocket] = socket;
+    async function connectH1(client2, socket) {
+      client2[kSocket] = socket;
       if (!llhttpInstance) {
         llhttpInstance = await llhttpPromise;
         llhttpPromise = null;
@@ -6217,7 +6217,7 @@ var require_client_h1 = __commonJS({
       socket[kIdleSocketValidation] = 0;
       socket[kIdleSocketValidationTimeout] = null;
       socket[kSocketUsed] = false;
-      socket[kParser] = new Parser(client, socket, llhttpInstance);
+      socket[kParser] = new Parser(client2, socket, llhttpInstance);
       addListener(socket, "error", function(err) {
         assert(err.code !== "ERR_TLS_CERT_ALTNAME_INVALID");
         const parser = this[kParser];
@@ -6250,7 +6250,7 @@ var require_client_h1 = __commonJS({
         util.destroy(this, new SocketError("other side closed", util.getSocketInfo(this)));
       });
       addListener(socket, "close", function() {
-        const client2 = this[kClient];
+        const client3 = this[kClient];
         const parser = this[kParser];
         clearIdleSocketValidation(this);
         if (parser) {
@@ -6261,24 +6261,24 @@ var require_client_h1 = __commonJS({
           this[kParser] = null;
         }
         const err = this[kError] || new SocketError("closed", util.getSocketInfo(this));
-        client2[kSocket] = null;
-        client2[kHTTPContext] = null;
-        if (client2.destroyed) {
-          assert(client2[kPending] === 0);
-          const requests = client2[kQueue].splice(client2[kRunningIdx]);
+        client3[kSocket] = null;
+        client3[kHTTPContext] = null;
+        if (client3.destroyed) {
+          assert(client3[kPending] === 0);
+          const requests = client3[kQueue].splice(client3[kRunningIdx]);
           for (let i = 0; i < requests.length; i++) {
             const request = requests[i];
-            util.errorRequest(client2, request, err);
+            util.errorRequest(client3, request, err);
           }
-        } else if (client2[kRunning] > 0 && err.code !== "UND_ERR_INFO") {
-          const request = client2[kQueue][client2[kRunningIdx]];
-          client2[kQueue][client2[kRunningIdx]++] = null;
-          util.errorRequest(client2, request, err);
+        } else if (client3[kRunning] > 0 && err.code !== "UND_ERR_INFO") {
+          const request = client3[kQueue][client3[kRunningIdx]];
+          client3[kQueue][client3[kRunningIdx]++] = null;
+          util.errorRequest(client3, request, err);
         }
-        client2[kPendingIdx] = client2[kRunningIdx];
-        assert(client2[kRunning] === 0);
-        client2.emit("disconnect", client2[kUrl], [client2], err);
-        client2[kResume]();
+        client3[kPendingIdx] = client3[kRunningIdx];
+        assert(client3[kRunning] === 0);
+        client3.emit("disconnect", client3[kUrl], [client3], err);
+        client3[kResume]();
       });
       let closed = false;
       socket.on("close", () => {
@@ -6288,10 +6288,10 @@ var require_client_h1 = __commonJS({
         version: "h1",
         defaultPipelining: 1,
         write(...args) {
-          return writeH1(client, ...args);
+          return writeH1(client2, ...args);
         },
         resume() {
-          resumeH1(client);
+          resumeH1(client2);
         },
         destroy(err, callback) {
           if (closed) {
@@ -6308,13 +6308,13 @@ var require_client_h1 = __commonJS({
             return true;
           }
           if (request) {
-            if (client[kRunning] > 0 && !request.idempotent) {
+            if (client2[kRunning] > 0 && !request.idempotent) {
               return true;
             }
-            if (client[kRunning] > 0 && (request.upgrade || request.method === "CONNECT")) {
+            if (client2[kRunning] > 0 && (request.upgrade || request.method === "CONNECT")) {
               return true;
             }
-            if (client[kRunning] > 0 && util.bodyLength(request.body) !== 0 && (util.isStream(request.body) || util.isAsyncIterable(request.body) || util.isFormDataLike(request.body))) {
+            if (client2[kRunning] > 0 && util.bodyLength(request.body) !== 0 && (util.isStream(request.body) || util.isAsyncIterable(request.body) || util.isFormDataLike(request.body))) {
               return true;
             }
           }
@@ -6329,21 +6329,21 @@ var require_client_h1 = __commonJS({
       }
       socket[kIdleSocketValidation] = 0;
     }
-    function scheduleIdleSocketValidation(client, socket) {
+    function scheduleIdleSocketValidation(client2, socket) {
       socket[kIdleSocketValidation] = 1;
       socket[kIdleSocketValidationTimeout] = setTimeout(() => {
         socket[kIdleSocketValidationTimeout] = null;
         socket[kIdleSocketValidation] = 2;
-        if (client[kSocket] === socket && !socket.destroyed) {
-          client[kResume]();
+        if (client2[kSocket] === socket && !socket.destroyed) {
+          client2[kResume]();
         }
       }, 0);
       socket[kIdleSocketValidationTimeout].unref?.();
     }
-    function resumeH1(client) {
-      const socket = client[kSocket];
+    function resumeH1(client2) {
+      const socket = client2[kSocket];
       if (socket && !socket.destroyed) {
-        if (client[kSize] === 0) {
+        if (client2[kSize] === 0) {
           if (!socket[kNoRef] && socket.unref) {
             socket.unref();
             socket[kNoRef] = true;
@@ -6352,9 +6352,9 @@ var require_client_h1 = __commonJS({
           socket.ref();
           socket[kNoRef] = false;
         }
-        if (client[kRunning] === 0 && client[kPending] > 0 && socket[kSocketUsed]) {
+        if (client2[kRunning] === 0 && client2[kPending] > 0 && socket[kSocketUsed]) {
           if (socket[kIdleSocketValidation] === 0) {
-            scheduleIdleSocketValidation(client, socket);
+            scheduleIdleSocketValidation(client2, socket);
             socket[kParser].readMore();
             if (socket.destroyed) {
               return;
@@ -6369,20 +6369,20 @@ var require_client_h1 = __commonJS({
             return;
           }
         }
-        if (client[kRunning] === 0) {
+        if (client2[kRunning] === 0) {
           socket[kParser].readMore();
           if (socket.destroyed) {
             return;
           }
         }
-        if (client[kSize] === 0) {
+        if (client2[kSize] === 0) {
           if (socket[kParser].timeoutType !== TIMEOUT_KEEP_ALIVE) {
-            socket[kParser].setTimeout(client[kKeepAliveTimeoutValue], TIMEOUT_KEEP_ALIVE);
+            socket[kParser].setTimeout(client2[kKeepAliveTimeoutValue], TIMEOUT_KEEP_ALIVE);
           }
-        } else if (client[kRunning] > 0 && socket[kParser].statusCode < 200) {
+        } else if (client2[kRunning] > 0 && socket[kParser].statusCode < 200) {
           if (socket[kParser].timeoutType !== TIMEOUT_HEADERS) {
-            const request = client[kQueue][client[kRunningIdx]];
-            const headersTimeout = request.headersTimeout != null ? request.headersTimeout : client[kHeadersTimeout];
+            const request = client2[kQueue][client2[kRunningIdx]];
+            const headersTimeout = request.headersTimeout != null ? request.headersTimeout : client2[kHeadersTimeout];
             socket[kParser].setTimeout(headersTimeout, TIMEOUT_HEADERS);
           }
         }
@@ -6391,7 +6391,7 @@ var require_client_h1 = __commonJS({
     function shouldSendContentLength(method) {
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
-    function writeH1(client, request) {
+    function writeH1(client2, request) {
       const { method, path, host, upgrade, blocking, reset } = request;
       let { body, headers, contentLength } = request;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH" || method === "QUERY" || method === "PROPFIND" || method === "PROPPATCH";
@@ -6410,7 +6410,7 @@ var require_client_h1 = __commonJS({
         if (contentType) {
           const contentTypeValue = `${contentType}`;
           if (!util.isValidHeaderValue(contentTypeValue)) {
-            util.errorRequest(client, request, new InvalidArgumentError("invalid content-type header"));
+            util.errorRequest(client2, request, new InvalidArgumentError("invalid content-type header"));
             return false;
           }
           headers.push("content-type", contentTypeValue);
@@ -6428,26 +6428,26 @@ var require_client_h1 = __commonJS({
         contentLength = null;
       }
       if (shouldSendContentLength(method) && contentLength > 0 && request.contentLength !== null && request.contentLength !== contentLength) {
-        if (client[kStrictContentLength]) {
-          util.errorRequest(client, request, new RequestContentLengthMismatchError());
+        if (client2[kStrictContentLength]) {
+          util.errorRequest(client2, request, new RequestContentLengthMismatchError());
           return false;
         }
         process.emitWarning(new RequestContentLengthMismatchError());
       }
-      const socket = client[kSocket];
+      const socket = client2[kSocket];
       clearIdleSocketValidation(socket);
       const abort = (err) => {
         if (request.aborted || request.completed) {
           return;
         }
-        util.errorRequest(client, request, err || new RequestAbortedError());
+        util.errorRequest(client2, request, err || new RequestAbortedError());
         util.destroy(body);
         util.destroy(socket, new InformationalError("aborted"));
       };
       try {
         request.onConnect(abort);
       } catch (err) {
-        util.errorRequest(client, request, err);
+        util.errorRequest(client2, request, err);
       }
       if (request.aborted) {
         return false;
@@ -6461,7 +6461,7 @@ var require_client_h1 = __commonJS({
       if (reset != null) {
         socket[kReset] = reset;
       }
-      if (client[kMaxRequests] && socket[kCounter]++ >= client[kMaxRequests]) {
+      if (client2[kMaxRequests] && socket[kCounter]++ >= client2[kMaxRequests]) {
         socket[kReset] = true;
       }
       if (blocking) {
@@ -6473,21 +6473,21 @@ var require_client_h1 = __commonJS({
         header += `host: ${host}\r
 `;
       } else {
-        header += client[kHostHeader];
+        header += client2[kHostHeader];
       }
       if (upgrade) {
         header += `connection: upgrade\r
 upgrade: ${upgrade}\r
 `;
-      } else if (client[kPipelining] && !socket[kReset]) {
+      } else if (client2[kPipelining] && !socket[kReset]) {
         header += "connection: keep-alive\r\n";
       } else {
         header += "connection: close\r\n";
       }
       if (Array.isArray(headers)) {
-        for (let n3 = 0; n3 < headers.length; n3 += 2) {
-          const key = headers[n3 + 0];
-          const val = headers[n3 + 1];
+        for (let n4 = 0; n4 < headers.length; n4 += 2) {
+          const key = headers[n4 + 0];
+          const val = headers[n4 + 1];
           if (Array.isArray(val)) {
             for (let i = 0; i < val.length; i++) {
               header += `${key}: ${val[i]}\r
@@ -6503,28 +6503,28 @@ upgrade: ${upgrade}\r
         channels.sendHeaders.publish({ request, headers: header, socket });
       }
       if (!body || bodyLength === 0) {
-        writeBuffer(abort, null, client, request, socket, contentLength, header, expectsPayload);
+        writeBuffer(abort, null, client2, request, socket, contentLength, header, expectsPayload);
       } else if (util.isBuffer(body)) {
-        writeBuffer(abort, body, client, request, socket, contentLength, header, expectsPayload);
+        writeBuffer(abort, body, client2, request, socket, contentLength, header, expectsPayload);
       } else if (util.isBlobLike(body)) {
         if (typeof body.stream === "function") {
-          writeIterable(abort, body.stream(), client, request, socket, contentLength, header, expectsPayload);
+          writeIterable(abort, body.stream(), client2, request, socket, contentLength, header, expectsPayload);
         } else {
-          writeBlob(abort, body, client, request, socket, contentLength, header, expectsPayload);
+          writeBlob(abort, body, client2, request, socket, contentLength, header, expectsPayload);
         }
       } else if (util.isStream(body)) {
-        writeStream(abort, body, client, request, socket, contentLength, header, expectsPayload);
+        writeStream(abort, body, client2, request, socket, contentLength, header, expectsPayload);
       } else if (util.isIterable(body)) {
-        writeIterable(abort, body, client, request, socket, contentLength, header, expectsPayload);
+        writeIterable(abort, body, client2, request, socket, contentLength, header, expectsPayload);
       } else {
         assert(false);
       }
       return true;
     }
-    function writeStream(abort, body, client, request, socket, contentLength, header, expectsPayload) {
-      assert(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
+    function writeStream(abort, body, client2, request, socket, contentLength, header, expectsPayload) {
+      assert(contentLength !== 0 || client2[kRunning] === 0, "stream body cannot be pipelined");
       let finished = false;
-      const writer = new AsyncWriter({ abort, socket, request, contentLength, client, expectsPayload, header });
+      const writer = new AsyncWriter({ abort, socket, request, contentLength, client: client2, expectsPayload, header });
       const onData = function(chunk) {
         if (finished) {
           return;
@@ -6559,7 +6559,7 @@ upgrade: ${upgrade}\r
           return;
         }
         finished = true;
-        assert(socket.destroyed || socket[kWriting] && client[kRunning] <= 1);
+        assert(socket.destroyed || socket[kWriting] && client2[kRunning] <= 1);
         socket.off("drain", onDrain).off("error", onFinished);
         body.removeListener("data", onData).removeListener("end", onFinished).removeListener("close", onClose);
         if (!err) {
@@ -6590,7 +6590,7 @@ upgrade: ${upgrade}\r
         setImmediate(onClose);
       }
     }
-    function writeBuffer(abort, body, client, request, socket, contentLength, header, expectsPayload) {
+    function writeBuffer(abort, body, client2, request, socket, contentLength, header, expectsPayload) {
       try {
         if (!body) {
           if (contentLength === 0) {
@@ -6616,12 +6616,12 @@ upgrade: ${upgrade}\r
           }
         }
         request.onRequestSent();
-        client[kResume]();
+        client2[kResume]();
       } catch (err) {
         abort(err);
       }
     }
-    async function writeBlob(abort, body, client, request, socket, contentLength, header, expectsPayload) {
+    async function writeBlob(abort, body, client2, request, socket, contentLength, header, expectsPayload) {
       assert(contentLength === body.size, "blob body must have content length");
       try {
         if (contentLength != null && contentLength !== body.size) {
@@ -6639,13 +6639,13 @@ upgrade: ${upgrade}\r
         if (!expectsPayload && request.reset !== false) {
           socket[kReset] = true;
         }
-        client[kResume]();
+        client2[kResume]();
       } catch (err) {
         abort(err);
       }
     }
-    async function writeIterable(abort, body, client, request, socket, contentLength, header, expectsPayload) {
-      assert(contentLength !== 0 || client[kRunning] === 0, "iterator body cannot be pipelined");
+    async function writeIterable(abort, body, client2, request, socket, contentLength, header, expectsPayload) {
+      assert(contentLength !== 0 || client2[kRunning] === 0, "iterator body cannot be pipelined");
       let callback = null;
       function onDrain() {
         if (callback) {
@@ -6663,7 +6663,7 @@ upgrade: ${upgrade}\r
         }
       });
       socket.on("close", onDrain).on("drain", onDrain);
-      const writer = new AsyncWriter({ abort, socket, request, contentLength, client, expectsPayload, header });
+      const writer = new AsyncWriter({ abort, socket, request, contentLength, client: client2, expectsPayload, header });
       try {
         for await (const chunk of body) {
           if (socket[kError]) {
@@ -6681,11 +6681,11 @@ upgrade: ${upgrade}\r
       }
     }
     var AsyncWriter = class {
-      constructor({ abort, socket, request, contentLength, client, expectsPayload, header }) {
+      constructor({ abort, socket, request, contentLength, client: client2, expectsPayload, header }) {
         this.socket = socket;
         this.request = request;
         this.contentLength = contentLength;
-        this.client = client;
+        this.client = client2;
         this.bytesWritten = 0;
         this.expectsPayload = expectsPayload;
         this.header = header;
@@ -6693,7 +6693,7 @@ upgrade: ${upgrade}\r
         socket[kWriting] = true;
       }
       write(chunk) {
-        const { socket, request, contentLength, client, bytesWritten, expectsPayload, header } = this;
+        const { socket, request, contentLength, client: client2, bytesWritten, expectsPayload, header } = this;
         if (socket[kError]) {
           throw socket[kError];
         }
@@ -6705,7 +6705,7 @@ upgrade: ${upgrade}\r
           return true;
         }
         if (contentLength !== null && bytesWritten + len > contentLength) {
-          if (client[kStrictContentLength]) {
+          if (client2[kStrictContentLength]) {
             throw new RequestContentLengthMismatchError();
           }
           process.emitWarning(new RequestContentLengthMismatchError());
@@ -6743,7 +6743,7 @@ ${len.toString(16)}\r
         return ret;
       }
       end() {
-        const { socket, contentLength, client, bytesWritten, expectsPayload, header, request } = this;
+        const { socket, contentLength, client: client2, bytesWritten, expectsPayload, header, request } = this;
         request.onRequestSent();
         socket[kWriting] = false;
         if (socket[kError]) {
@@ -6765,7 +6765,7 @@ ${len.toString(16)}\r
           socket.write("\r\n0\r\n\r\n", "latin1");
         }
         if (contentLength !== null && bytesWritten !== contentLength) {
-          if (client[kStrictContentLength]) {
+          if (client2[kStrictContentLength]) {
             throw new RequestContentLengthMismatchError();
           } else {
             process.emitWarning(new RequestContentLengthMismatchError());
@@ -6776,13 +6776,13 @@ ${len.toString(16)}\r
             socket[kParser].timeout.refresh();
           }
         }
-        client[kResume]();
+        client2[kResume]();
       }
       destroy(err) {
-        const { socket, client, abort } = this;
+        const { socket, client: client2, abort } = this;
         socket[kWriting] = false;
         if (err) {
-          assert(client[kRunning] <= 1, "pipeline should only contain this request");
+          assert(client2[kRunning] <= 1, "pipeline should only contain this request");
           abort(err);
         }
       }
@@ -6856,41 +6856,41 @@ var require_client_h2 = __commonJS({
       }
       return result;
     }
-    async function connectH2(client, socket) {
-      client[kSocket] = socket;
+    async function connectH2(client2, socket) {
+      client2[kSocket] = socket;
       if (!h2ExperimentalWarned) {
         h2ExperimentalWarned = true;
         process.emitWarning("H2 support is experimental, expect them to change at any time.", {
           code: "UNDICI-H2"
         });
       }
-      const session = http2.connect(client[kUrl], {
+      const session = http2.connect(client2[kUrl], {
         createConnection: () => socket,
-        peerMaxConcurrentStreams: client[kMaxConcurrentStreams]
+        peerMaxConcurrentStreams: client2[kMaxConcurrentStreams]
       });
       session[kOpenStreams] = 0;
-      session[kClient] = client;
+      session[kClient] = client2;
       session[kSocket] = socket;
       util.addListener(session, "error", onHttp2SessionError);
       util.addListener(session, "frameError", onHttp2FrameError);
       util.addListener(session, "end", onHttp2SessionEnd);
       util.addListener(session, "goaway", onHTTP2GoAway);
       util.addListener(session, "close", function() {
-        const { [kClient]: client2 } = this;
-        const { [kSocket]: socket2 } = client2;
+        const { [kClient]: client3 } = this;
+        const { [kSocket]: socket2 } = client3;
         const err = this[kSocket][kError] || this[kError] || new SocketError("closed", util.getSocketInfo(socket2));
-        client2[kHTTP2Session] = null;
-        if (client2.destroyed) {
-          assert(client2[kPending] === 0);
-          const requests = client2[kQueue].splice(client2[kRunningIdx]);
+        client3[kHTTP2Session] = null;
+        if (client3.destroyed) {
+          assert(client3[kPending] === 0);
+          const requests = client3[kQueue].splice(client3[kRunningIdx]);
           for (let i = 0; i < requests.length; i++) {
             const request = requests[i];
-            util.errorRequest(client2, request, err);
+            util.errorRequest(client3, request, err);
           }
         }
       });
       session.unref();
-      client[kHTTP2Session] = session;
+      client2[kHTTP2Session] = session;
       socket[kHTTP2Session] = session;
       util.addListener(socket, "error", function(err) {
         assert(err.code !== "ERR_TLS_CERT_ALTNAME_INVALID");
@@ -6902,14 +6902,14 @@ var require_client_h2 = __commonJS({
       });
       util.addListener(socket, "close", function() {
         const err = this[kError] || new SocketError("closed", util.getSocketInfo(this));
-        client[kSocket] = null;
+        client2[kSocket] = null;
         if (this[kHTTP2Session] != null) {
           this[kHTTP2Session].destroy(err);
         }
-        client[kPendingIdx] = client[kRunningIdx];
-        assert(client[kRunning] === 0);
-        client.emit("disconnect", client[kUrl], [client], err);
-        client[kResume]();
+        client2[kPendingIdx] = client2[kRunningIdx];
+        assert(client2[kRunning] === 0);
+        client2.emit("disconnect", client2[kUrl], [client2], err);
+        client2[kResume]();
       });
       let closed = false;
       socket.on("close", () => {
@@ -6919,10 +6919,10 @@ var require_client_h2 = __commonJS({
         version: "h2",
         defaultPipelining: Infinity,
         write(...args) {
-          return writeH2(client, ...args);
+          return writeH2(client2, ...args);
         },
         resume() {
-          resumeH2(client);
+          resumeH2(client2);
         },
         destroy(err, callback) {
           if (closed) {
@@ -6939,15 +6939,15 @@ var require_client_h2 = __commonJS({
         }
       };
     }
-    function resumeH2(client) {
-      const socket = client[kSocket];
+    function resumeH2(client2) {
+      const socket = client2[kSocket];
       if (socket?.destroyed === false) {
-        if (client[kSize] === 0 && client[kMaxConcurrentStreams] === 0) {
+        if (client2[kSize] === 0 && client2[kMaxConcurrentStreams] === 0) {
           socket.unref();
-          client[kHTTP2Session].unref();
+          client2[kHTTP2Session].unref();
         } else {
           socket.ref();
-          client[kHTTP2Session].ref();
+          client2[kHTTP2Session].ref();
         }
       }
     }
@@ -6970,39 +6970,39 @@ var require_client_h2 = __commonJS({
     }
     function onHTTP2GoAway(code) {
       const err = this[kError] || new SocketError(`HTTP/2: "GOAWAY" frame received with code ${code}`, util.getSocketInfo(this));
-      const client = this[kClient];
-      client[kSocket] = null;
-      client[kHTTPContext] = null;
+      const client2 = this[kClient];
+      client2[kSocket] = null;
+      client2[kHTTPContext] = null;
       if (this[kHTTP2Session] != null) {
         this[kHTTP2Session].destroy(err);
         this[kHTTP2Session] = null;
       }
       util.destroy(this[kSocket], err);
-      if (client[kRunningIdx] < client[kQueue].length) {
-        const request = client[kQueue][client[kRunningIdx]];
-        client[kQueue][client[kRunningIdx]++] = null;
-        util.errorRequest(client, request, err);
-        client[kPendingIdx] = client[kRunningIdx];
+      if (client2[kRunningIdx] < client2[kQueue].length) {
+        const request = client2[kQueue][client2[kRunningIdx]];
+        client2[kQueue][client2[kRunningIdx]++] = null;
+        util.errorRequest(client2, request, err);
+        client2[kPendingIdx] = client2[kRunningIdx];
       }
-      assert(client[kRunning] === 0);
-      client.emit("disconnect", client[kUrl], [client], err);
-      client[kResume]();
+      assert(client2[kRunning] === 0);
+      client2.emit("disconnect", client2[kUrl], [client2], err);
+      client2[kResume]();
     }
     function shouldSendContentLength(method) {
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
-    function writeH2(client, request) {
-      const session = client[kHTTP2Session];
+    function writeH2(client2, request) {
+      const session = client2[kHTTP2Session];
       const { method, path, host, upgrade, expectContinue, signal, headers: reqHeaders } = request;
       let { body } = request;
       if (upgrade) {
-        util.errorRequest(client, request, new Error("Upgrade not supported for H2"));
+        util.errorRequest(client2, request, new Error("Upgrade not supported for H2"));
         return false;
       }
       const headers = {};
-      for (let n3 = 0; n3 < reqHeaders.length; n3 += 2) {
-        const key = reqHeaders[n3 + 0];
-        const val = reqHeaders[n3 + 1];
+      for (let n4 = 0; n4 < reqHeaders.length; n4 += 2) {
+        const key = reqHeaders[n4 + 0];
+        const val = reqHeaders[n4 + 1];
         if (Array.isArray(val)) {
           for (let i = 0; i < val.length; i++) {
             if (headers[key]) {
@@ -7016,7 +7016,7 @@ var require_client_h2 = __commonJS({
         }
       }
       let stream;
-      const { hostname, port } = client[kUrl];
+      const { hostname, port } = client2[kUrl];
       headers[HTTP2_HEADER_AUTHORITY] = host || `${hostname}${port ? `:${port}` : ""}`;
       headers[HTTP2_HEADER_METHOD] = method;
       const abort = (err) => {
@@ -7024,18 +7024,18 @@ var require_client_h2 = __commonJS({
           return;
         }
         err = err || new RequestAbortedError();
-        util.errorRequest(client, request, err);
+        util.errorRequest(client2, request, err);
         if (stream != null) {
           util.destroy(stream, err);
         }
         util.destroy(body, err);
-        client[kQueue][client[kRunningIdx]++] = null;
-        client[kResume]();
+        client2[kQueue][client2[kRunningIdx]++] = null;
+        client2[kResume]();
       };
       try {
         request.onConnect(abort);
       } catch (err) {
-        util.errorRequest(client, request, err);
+        util.errorRequest(client2, request, err);
       }
       if (request.aborted) {
         return false;
@@ -7046,12 +7046,12 @@ var require_client_h2 = __commonJS({
         if (stream.id && !stream.pending) {
           request.onUpgrade(null, null, stream);
           ++session[kOpenStreams];
-          client[kQueue][client[kRunningIdx]++] = null;
+          client2[kQueue][client2[kRunningIdx]++] = null;
         } else {
           stream.once("ready", () => {
             request.onUpgrade(null, null, stream);
             ++session[kOpenStreams];
-            client[kQueue][client[kRunningIdx]++] = null;
+            client2[kQueue][client2[kRunningIdx]++] = null;
           });
         }
         stream.once("close", () => {
@@ -7081,8 +7081,8 @@ var require_client_h2 = __commonJS({
         contentLength = null;
       }
       if (shouldSendContentLength(method) && contentLength > 0 && request.contentLength != null && request.contentLength !== contentLength) {
-        if (client[kStrictContentLength]) {
-          util.errorRequest(client, request, new RequestContentLengthMismatchError());
+        if (client2[kStrictContentLength]) {
+          util.errorRequest(client2, request, new RequestContentLengthMismatchError());
           return false;
         }
         process.emitWarning(new RequestContentLengthMismatchError());
@@ -7110,7 +7110,7 @@ var require_client_h2 = __commonJS({
         request.onResponseStarted();
         if (request.aborted) {
           const err = new RequestAbortedError();
-          util.errorRequest(client, request, err);
+          util.errorRequest(client2, request, err);
           util.destroy(stream, err);
           return;
         }
@@ -7131,9 +7131,9 @@ var require_client_h2 = __commonJS({
           session.unref();
         }
         abort(new InformationalError("HTTP/2: stream half-closed (remote)"));
-        client[kQueue][client[kRunningIdx]++] = null;
-        client[kPendingIdx] = client[kRunningIdx];
-        client[kResume]();
+        client2[kQueue][client2[kRunningIdx]++] = null;
+        client2[kPendingIdx] = client2[kRunningIdx];
+        client2[kResume]();
       });
       stream.once("close", () => {
         session[kOpenStreams] -= 1;
@@ -7154,9 +7154,9 @@ var require_client_h2 = __commonJS({
             abort,
             stream,
             null,
-            client,
+            client2,
             request,
-            client[kSocket],
+            client2[kSocket],
             contentLength,
             expectsPayload
           );
@@ -7165,9 +7165,9 @@ var require_client_h2 = __commonJS({
             abort,
             stream,
             body,
-            client,
+            client2,
             request,
-            client[kSocket],
+            client2[kSocket],
             contentLength,
             expectsPayload
           );
@@ -7177,9 +7177,9 @@ var require_client_h2 = __commonJS({
               abort,
               stream,
               body.stream(),
-              client,
+              client2,
               request,
-              client[kSocket],
+              client2[kSocket],
               contentLength,
               expectsPayload
             );
@@ -7188,9 +7188,9 @@ var require_client_h2 = __commonJS({
               abort,
               stream,
               body,
-              client,
+              client2,
               request,
-              client[kSocket],
+              client2[kSocket],
               contentLength,
               expectsPayload
             );
@@ -7198,11 +7198,11 @@ var require_client_h2 = __commonJS({
         } else if (util.isStream(body)) {
           writeStream(
             abort,
-            client[kSocket],
+            client2[kSocket],
             expectsPayload,
             stream,
             body,
-            client,
+            client2,
             request,
             contentLength
           );
@@ -7211,9 +7211,9 @@ var require_client_h2 = __commonJS({
             abort,
             stream,
             body,
-            client,
+            client2,
             request,
-            client[kSocket],
+            client2[kSocket],
             contentLength,
             expectsPayload
           );
@@ -7222,7 +7222,7 @@ var require_client_h2 = __commonJS({
         }
       }
     }
-    function writeBuffer(abort, h2stream, body, client, request, socket, contentLength, expectsPayload) {
+    function writeBuffer(abort, h2stream, body, client2, request, socket, contentLength, expectsPayload) {
       try {
         if (body != null && util.isBuffer(body)) {
           assert(contentLength === body.byteLength, "buffer body must have content length");
@@ -7236,13 +7236,13 @@ var require_client_h2 = __commonJS({
           socket[kReset] = true;
         }
         request.onRequestSent();
-        client[kResume]();
+        client2[kResume]();
       } catch (error2) {
         abort(error2);
       }
     }
-    function writeStream(abort, socket, expectsPayload, h2stream, body, client, request, contentLength) {
-      assert(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
+    function writeStream(abort, socket, expectsPayload, h2stream, body, client2, request, contentLength) {
+      assert(contentLength !== 0 || client2[kRunning] === 0, "stream body cannot be pipelined");
       const pipe = pipeline(
         body,
         h2stream,
@@ -7256,7 +7256,7 @@ var require_client_h2 = __commonJS({
             if (!expectsPayload) {
               socket[kReset] = true;
             }
-            client[kResume]();
+            client2[kResume]();
           }
         }
       );
@@ -7265,7 +7265,7 @@ var require_client_h2 = __commonJS({
         request.onBodySent(chunk);
       }
     }
-    async function writeBlob(abort, h2stream, body, client, request, socket, contentLength, expectsPayload) {
+    async function writeBlob(abort, h2stream, body, client2, request, socket, contentLength, expectsPayload) {
       assert(contentLength === body.size, "blob body must have content length");
       try {
         if (contentLength != null && contentLength !== body.size) {
@@ -7281,13 +7281,13 @@ var require_client_h2 = __commonJS({
         if (!expectsPayload) {
           socket[kReset] = true;
         }
-        client[kResume]();
+        client2[kResume]();
       } catch (err) {
         abort(err);
       }
     }
-    async function writeIterable(abort, h2stream, body, client, request, socket, contentLength, expectsPayload) {
-      assert(contentLength !== 0 || client[kRunning] === 0, "iterator body cannot be pipelined");
+    async function writeIterable(abort, h2stream, body, client2, request, socket, contentLength, expectsPayload) {
+      assert(contentLength !== 0 || client2[kRunning] === 0, "iterator body cannot be pipelined");
       let callback = null;
       function onDrain() {
         if (callback) {
@@ -7321,7 +7321,7 @@ var require_client_h2 = __commonJS({
         if (!expectsPayload) {
           socket[kReset] = true;
         }
-        client[kResume]();
+        client2[kResume]();
       } catch (err) {
         abort(err);
       } finally {
@@ -7578,8 +7578,8 @@ var require_client = __commonJS({
     var kClosedResolve = /* @__PURE__ */ Symbol("kClosedResolve");
     var noop = () => {
     };
-    function getPipelining(client) {
-      return client[kPipelining] ?? client[kHTTPContext]?.defaultPipelining ?? 1;
+    function getPipelining(client2) {
+      return client2[kPipelining] ?? client2[kHTTPContext]?.defaultPipelining ?? 1;
     }
     var Client = class extends DispatcherBase {
       /**
@@ -7812,21 +7812,21 @@ var require_client = __commonJS({
       }
     };
     var createRedirectInterceptor = require_redirect_interceptor();
-    function onError(client, err) {
-      if (client[kRunning] === 0 && err.code !== "UND_ERR_INFO" && err.code !== "UND_ERR_SOCKET") {
-        assert(client[kPendingIdx] === client[kRunningIdx]);
-        const requests = client[kQueue].splice(client[kRunningIdx]);
+    function onError(client2, err) {
+      if (client2[kRunning] === 0 && err.code !== "UND_ERR_INFO" && err.code !== "UND_ERR_SOCKET") {
+        assert(client2[kPendingIdx] === client2[kRunningIdx]);
+        const requests = client2[kQueue].splice(client2[kRunningIdx]);
         for (let i = 0; i < requests.length; i++) {
           const request = requests[i];
-          util.errorRequest(client, request, err);
+          util.errorRequest(client2, request, err);
         }
-        assert(client[kSize] === 0);
+        assert(client2[kSize] === 0);
       }
     }
-    async function connect(client) {
-      assert(!client[kConnecting]);
-      assert(!client[kHTTPContext]);
-      let { host, hostname, protocol, port } = client[kUrl];
+    async function connect(client2) {
+      assert(!client2[kConnecting]);
+      assert(!client2[kHTTPContext]);
+      let { host, hostname, protocol, port } = client2[kUrl];
       if (hostname[0] === "[") {
         const idx = hostname.indexOf("]");
         assert(idx !== -1);
@@ -7834,7 +7834,7 @@ var require_client = __commonJS({
         assert(net.isIP(ip));
         hostname = ip;
       }
-      client[kConnecting] = true;
+      client2[kConnecting] = true;
       if (channels.beforeConnect.hasSubscribers) {
         channels.beforeConnect.publish({
           connectParams: {
@@ -7842,22 +7842,22 @@ var require_client = __commonJS({
             hostname,
             protocol,
             port,
-            version: client[kHTTPContext]?.version,
-            servername: client[kServerName],
-            localAddress: client[kLocalAddress]
+            version: client2[kHTTPContext]?.version,
+            servername: client2[kServerName],
+            localAddress: client2[kLocalAddress]
           },
-          connector: client[kConnector]
+          connector: client2[kConnector]
         });
       }
       try {
         const socket = await new Promise((resolve, reject) => {
-          client[kConnector]({
+          client2[kConnector]({
             host,
             hostname,
             protocol,
             port,
-            servername: client[kServerName],
-            localAddress: client[kLocalAddress]
+            servername: client2[kServerName],
+            localAddress: client2[kLocalAddress]
           }, (err, socket2) => {
             if (err) {
               reject(err);
@@ -7866,21 +7866,21 @@ var require_client = __commonJS({
             }
           });
         });
-        if (client.destroyed) {
+        if (client2.destroyed) {
           util.destroy(socket.on("error", noop), new ClientDestroyedError());
           return;
         }
         assert(socket);
         try {
-          client[kHTTPContext] = socket.alpnProtocol === "h2" ? await connectH2(client, socket) : await connectH1(client, socket);
+          client2[kHTTPContext] = socket.alpnProtocol === "h2" ? await connectH2(client2, socket) : await connectH1(client2, socket);
         } catch (err) {
           socket.destroy().on("error", noop);
           throw err;
         }
-        client[kConnecting] = false;
+        client2[kConnecting] = false;
         socket[kCounter] = 0;
-        socket[kMaxRequests] = client[kMaxRequests];
-        socket[kClient] = client;
+        socket[kMaxRequests] = client2[kMaxRequests];
+        socket[kClient] = client2;
         socket[kError] = null;
         if (channels.connected.hasSubscribers) {
           channels.connected.publish({
@@ -7889,20 +7889,20 @@ var require_client = __commonJS({
               hostname,
               protocol,
               port,
-              version: client[kHTTPContext]?.version,
-              servername: client[kServerName],
-              localAddress: client[kLocalAddress]
+              version: client2[kHTTPContext]?.version,
+              servername: client2[kServerName],
+              localAddress: client2[kLocalAddress]
             },
-            connector: client[kConnector],
+            connector: client2[kConnector],
             socket
           });
         }
-        client.emit("connect", client[kUrl], [client]);
+        client2.emit("connect", client2[kUrl], [client2]);
       } catch (err) {
-        if (client.destroyed) {
+        if (client2.destroyed) {
           return;
         }
-        client[kConnecting] = false;
+        client2[kConnecting] = false;
         if (channels.connectError.hasSubscribers) {
           channels.connectError.publish({
             connectParams: {
@@ -7910,103 +7910,103 @@ var require_client = __commonJS({
               hostname,
               protocol,
               port,
-              version: client[kHTTPContext]?.version,
-              servername: client[kServerName],
-              localAddress: client[kLocalAddress]
+              version: client2[kHTTPContext]?.version,
+              servername: client2[kServerName],
+              localAddress: client2[kLocalAddress]
             },
-            connector: client[kConnector],
+            connector: client2[kConnector],
             error: err
           });
         }
         if (err.code === "ERR_TLS_CERT_ALTNAME_INVALID") {
-          assert(client[kRunning] === 0);
-          while (client[kPending] > 0 && client[kQueue][client[kPendingIdx]].servername === client[kServerName]) {
-            const request = client[kQueue][client[kPendingIdx]++];
-            util.errorRequest(client, request, err);
+          assert(client2[kRunning] === 0);
+          while (client2[kPending] > 0 && client2[kQueue][client2[kPendingIdx]].servername === client2[kServerName]) {
+            const request = client2[kQueue][client2[kPendingIdx]++];
+            util.errorRequest(client2, request, err);
           }
         } else {
-          onError(client, err);
+          onError(client2, err);
         }
-        client.emit("connectionError", client[kUrl], [client], err);
+        client2.emit("connectionError", client2[kUrl], [client2], err);
       }
-      client[kResume]();
+      client2[kResume]();
     }
-    function emitDrain(client) {
-      client[kNeedDrain] = 0;
-      client.emit("drain", client[kUrl], [client]);
+    function emitDrain(client2) {
+      client2[kNeedDrain] = 0;
+      client2.emit("drain", client2[kUrl], [client2]);
     }
-    function resume(client, sync) {
-      if (client[kResuming] === 2) {
+    function resume(client2, sync) {
+      if (client2[kResuming] === 2) {
         return;
       }
-      client[kResuming] = 2;
-      _resume(client, sync);
-      client[kResuming] = 0;
-      if (client[kRunningIdx] > 256) {
-        client[kQueue].splice(0, client[kRunningIdx]);
-        client[kPendingIdx] -= client[kRunningIdx];
-        client[kRunningIdx] = 0;
+      client2[kResuming] = 2;
+      _resume(client2, sync);
+      client2[kResuming] = 0;
+      if (client2[kRunningIdx] > 256) {
+        client2[kQueue].splice(0, client2[kRunningIdx]);
+        client2[kPendingIdx] -= client2[kRunningIdx];
+        client2[kRunningIdx] = 0;
       }
     }
-    function _resume(client, sync) {
+    function _resume(client2, sync) {
       while (true) {
-        if (client.destroyed) {
-          assert(client[kPending] === 0);
+        if (client2.destroyed) {
+          assert(client2[kPending] === 0);
           return;
         }
-        if (client[kClosedResolve] && !client[kSize]) {
-          client[kClosedResolve]();
-          client[kClosedResolve] = null;
+        if (client2[kClosedResolve] && !client2[kSize]) {
+          client2[kClosedResolve]();
+          client2[kClosedResolve] = null;
           return;
         }
-        if (client[kHTTPContext]) {
-          client[kHTTPContext].resume();
+        if (client2[kHTTPContext]) {
+          client2[kHTTPContext].resume();
         }
-        if (client[kBusy]) {
-          client[kNeedDrain] = 2;
-        } else if (client[kNeedDrain] === 2) {
+        if (client2[kBusy]) {
+          client2[kNeedDrain] = 2;
+        } else if (client2[kNeedDrain] === 2) {
           if (sync) {
-            client[kNeedDrain] = 1;
-            queueMicrotask(() => emitDrain(client));
+            client2[kNeedDrain] = 1;
+            queueMicrotask(() => emitDrain(client2));
           } else {
-            emitDrain(client);
+            emitDrain(client2);
           }
           continue;
         }
-        if (client[kPending] === 0) {
+        if (client2[kPending] === 0) {
           return;
         }
-        if (client[kRunning] >= (getPipelining(client) || 1)) {
+        if (client2[kRunning] >= (getPipelining(client2) || 1)) {
           return;
         }
-        const request = client[kQueue][client[kPendingIdx]];
-        if (client[kUrl].protocol === "https:" && client[kServerName] !== request.servername) {
-          if (client[kRunning] > 0) {
+        const request = client2[kQueue][client2[kPendingIdx]];
+        if (client2[kUrl].protocol === "https:" && client2[kServerName] !== request.servername) {
+          if (client2[kRunning] > 0) {
             return;
           }
-          client[kServerName] = request.servername;
-          client[kHTTPContext]?.destroy(new InformationalError("servername changed"), () => {
-            client[kHTTPContext] = null;
-            resume(client);
+          client2[kServerName] = request.servername;
+          client2[kHTTPContext]?.destroy(new InformationalError("servername changed"), () => {
+            client2[kHTTPContext] = null;
+            resume(client2);
           });
         }
-        if (client[kConnecting]) {
+        if (client2[kConnecting]) {
           return;
         }
-        if (!client[kHTTPContext]) {
-          connect(client);
+        if (!client2[kHTTPContext]) {
+          connect(client2);
           return;
         }
-        if (client[kHTTPContext].destroyed) {
+        if (client2[kHTTPContext].destroyed) {
           return;
         }
-        if (client[kHTTPContext].busy(request)) {
+        if (client2[kHTTPContext].busy(request)) {
           return;
         }
-        if (!request.aborted && client[kHTTPContext].write(request)) {
-          client[kPendingIdx]++;
+        if (!request.aborted && client2[kHTTPContext].write(request)) {
+          client2[kPendingIdx]++;
         } else {
-          client[kQueue].splice(client[kPendingIdx], 1);
+          client2[kQueue].splice(client2[kPendingIdx], 1);
         }
       }
     }
@@ -8165,10 +8165,10 @@ var require_pool_base = __commonJS({
         return this[kNeedDrain];
       }
       get [kConnected]() {
-        return this[kClients].filter((client) => client[kConnected]).length;
+        return this[kClients].filter((client2) => client2[kConnected]).length;
       }
       get [kFree]() {
-        return this[kClients].filter((client) => client[kConnected] && !client[kNeedDrain]).length;
+        return this[kClients].filter((client2) => client2[kConnected] && !client2[kNeedDrain]).length;
       }
       get [kPending]() {
         let ret = this[kQueued];
@@ -8225,21 +8225,21 @@ var require_pool_base = __commonJS({
         }
         return !this[kNeedDrain];
       }
-      [kAddClient](client) {
-        client.on("drain", this[kOnDrain]).on("connect", this[kOnConnect]).on("disconnect", this[kOnDisconnect]).on("connectionError", this[kOnConnectionError]);
-        this[kClients].push(client);
+      [kAddClient](client2) {
+        client2.on("drain", this[kOnDrain]).on("connect", this[kOnConnect]).on("disconnect", this[kOnDisconnect]).on("connectionError", this[kOnConnectionError]);
+        this[kClients].push(client2);
         if (this[kNeedDrain]) {
           queueMicrotask(() => {
             if (this[kNeedDrain]) {
-              this[kOnDrain](client[kUrl], [this, client]);
+              this[kOnDrain](client2[kUrl], [this, client2]);
             }
           });
         }
         return this;
       }
-      [kRemoveClient](client) {
-        client.close(() => {
-          const idx = this[kClients].indexOf(client);
+      [kRemoveClient](client2) {
+        client2.close(() => {
+          const idx = this[kClients].indexOf(client2);
           if (idx !== -1) {
             this[kClients].splice(idx, 1);
           }
@@ -8333,9 +8333,9 @@ var require_pool = __commonJS({
         });
       }
       [kGetDispatcher]() {
-        for (const client of this[kClients]) {
-          if (!client[kNeedDrain]) {
-            return client;
+        for (const client2 of this[kClients]) {
+          if (!client2[kNeedDrain]) {
+            return client2;
           }
         }
         if (!this[kConnections] || this[kClients].length < this[kConnections]) {
@@ -8430,8 +8430,8 @@ var require_balanced_pool = __commonJS({
             this._updateBalancedPoolStats();
           }
         });
-        for (const client of this[kClients]) {
-          client[kWeight] = this[kMaxWeightPerServer];
+        for (const client2 of this[kClients]) {
+          client2[kWeight] = this[kMaxWeightPerServer];
         }
         this._updateBalancedPoolStats();
         return this;
@@ -8550,8 +8550,8 @@ var require_agent = __commonJS({
       }
       get [kRunning]() {
         let ret = 0;
-        for (const client of this[kClients].values()) {
-          ret += client[kRunning];
+        for (const client2 of this[kClients].values()) {
+          ret += client2[kRunning];
         }
         return ret;
       }
@@ -8571,16 +8571,16 @@ var require_agent = __commonJS({
       }
       async [kClose]() {
         const closePromises = [];
-        for (const client of this[kClients].values()) {
-          closePromises.push(client.close());
+        for (const client2 of this[kClients].values()) {
+          closePromises.push(client2.close());
         }
         this[kClients].clear();
         await Promise.all(closePromises);
       }
       async [kDestroy](err) {
         const destroyPromises = [];
-        for (const client of this[kClients].values()) {
-          destroyPromises.push(client.destroy(err));
+        for (const client2 of this[kClients].values()) {
+          destroyPromises.push(client2.destroy(err));
         }
         this[kClients].clear();
         await Promise.all(destroyPromises);
@@ -9516,8 +9516,8 @@ var require_readable = __commonJS({
       if (state.bufferIndex) {
         const start = state.bufferIndex;
         const end = state.buffer.length;
-        for (let n3 = start; n3 < end; n3++) {
-          consumePush(consume2, state.buffer[n3]);
+        for (let n4 = start; n4 < end; n4++) {
+          consumePush(consume2, state.buffer[n4]);
         }
       } else {
         for (const chunk of state.buffer) {
@@ -11102,9 +11102,9 @@ var require_pluralizer = __commonJS({
       this: "these"
     };
     module2.exports = class Pluralizer {
-      constructor(singular, plural2) {
+      constructor(singular, plural3) {
         this.singular = singular;
-        this.plural = plural2;
+        this.plural = plural3;
       }
       pluralize(count) {
         const one = count === 1;
@@ -11245,9 +11245,9 @@ var require_mock_agent = __commonJS({
         return this[kOptions] && this[kOptions].connections === 1 ? new MockClient(origin, mockOptions) : new MockPool(origin, mockOptions);
       }
       [kMockAgentGet](origin) {
-        const client = this[kClients].get(origin);
-        if (client) {
-          return client;
+        const client2 = this[kClients].get(origin);
+        if (client2) {
+          return client2;
         }
         if (typeof origin !== "string") {
           const dispatcher = this[kFactory]("http://localhost:9999");
@@ -17051,12 +17051,12 @@ var require_connection = __commonJS({
       crypto2 = require("node:crypto");
     } catch {
     }
-    function establishWebSocketConnection(url, protocols, client, ws, onEstablish, options) {
+    function establishWebSocketConnection(url, protocols, client2, ws, onEstablish, options) {
       const requestURL = url;
       requestURL.protocol = url.protocol === "ws:" ? "http:" : "https:";
       const request = makeRequest({
         urlList: [requestURL],
-        client,
+        client: client2,
         serviceWorkers: "none",
         referrer: "no-referrer",
         mode: "websocket",
@@ -17528,34 +17528,34 @@ var require_receiver = __commonJS({
        * @param {number} n
        * @returns {Buffer}
        */
-      consume(n3) {
-        if (n3 > this.#byteOffset) {
+      consume(n4) {
+        if (n4 > this.#byteOffset) {
           throw new Error("Called consume() before buffers satiated.");
-        } else if (n3 === 0) {
+        } else if (n4 === 0) {
           return emptyBuffer;
         }
-        if (this.#buffers[0].length === n3) {
+        if (this.#buffers[0].length === n4) {
           this.#byteOffset -= this.#buffers[0].length;
           return this.#buffers.shift();
         }
-        const buffer = Buffer.allocUnsafe(n3);
+        const buffer = Buffer.allocUnsafe(n4);
         let offset = 0;
-        while (offset !== n3) {
+        while (offset !== n4) {
           const next = this.#buffers[0];
           const { length } = next;
-          if (length + offset === n3) {
+          if (length + offset === n4) {
             buffer.set(this.#buffers.shift(), offset);
             break;
-          } else if (length + offset > n3) {
-            buffer.set(next.subarray(0, n3 - offset), offset);
-            this.#buffers[0] = next.subarray(n3 - offset);
+          } else if (length + offset > n4) {
+            buffer.set(next.subarray(0, n4 - offset), offset);
+            this.#buffers[0] = next.subarray(n4 - offset);
             break;
           } else {
             buffer.set(this.#buffers.shift(), offset);
             offset += next.length;
           }
         }
-        this.#byteOffset -= n3;
+        this.#byteOffset -= n4;
         return buffer;
       }
       writeFragments(fragment) {
@@ -17832,11 +17832,11 @@ var require_websocket = __commonJS({
           throw new DOMException("Invalid Sec-WebSocket-Protocol value", "SyntaxError");
         }
         this[kWebSocketURL] = new URL(urlRecord.href);
-        const client = environmentSettingsObject.settingsObject;
+        const client2 = environmentSettingsObject.settingsObject;
         this[kController] = establishWebSocketConnection(
           urlRecord,
           protocols,
-          client,
+          client2,
           this,
           (response, extensions) => this.#onConnectionEstablished(response, extensions),
           options
@@ -19373,8 +19373,8 @@ function describe(err) {
   }
   return String(err);
 }
-function truncate(s, n3) {
-  return s.length > n3 ? `${s.slice(0, n3)}\u2026` : s;
+function truncate(s, n4) {
+  return s.length > n4 ? `${s.slice(0, n4)}\u2026` : s;
 }
 var defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 var Api = class {
@@ -19703,12 +19703,18 @@ function currentMonth(now = /* @__PURE__ */ new Date()) {
 }
 
 // src/archive.ts
-var SCHEMA_VERSION = 1;
+var SCHEMA_VERSION = 2;
 var KEYS = {
   // A re-attempt reuses the run id, so the attempt number is part of the identity.
   runs: (r) => `${r.id}:${r.run_attempt ?? 1}`,
   checks: (r) => String(r.id),
   statuses: (r) => String(r.id)
+};
+var FILL = {
+  runs: (r) => {
+    r.path ??= null;
+    r.display_title ??= null;
+  }
 };
 var SORT_KEYS = {
   runs: (r) => `${r.created_at ?? ""}|${String(r.id).padStart(20, "0")}|${r.run_attempt ?? 1}`,
@@ -19815,6 +19821,8 @@ var Archive = class _Archive {
     const cached = this.cache.get(path);
     if (cached) return cached;
     const records = parseJsonl(await this.backend.read(path), path);
+    const fill = FILL[kind];
+    if (fill) for (const record of records) fill(record);
     this.cache.set(path, records);
     return records;
   }
@@ -19871,6 +19879,20 @@ var Archive = class _Archive {
   }
   async hasRun(id, attempt, month) {
     return (await this.keys("runs", month)).has(`${id}:${attempt}`);
+  }
+  /**
+   * Every attempt archived under one run id, lowest attempt first. The month is
+   * not known to a caller holding only an id, so this reads across all of them;
+   * reads are cached, so repeated lookups only pay for the first pass.
+   */
+  async runAttempts(id) {
+    const found = [];
+    for (const month of this.months()) {
+      for (const run2 of await this.read("runs", month)) {
+        if (run2.id === id) found.push(run2);
+      }
+    }
+    return found.sort((a, b) => (a.run_attempt ?? 1) - (b.run_attempt ?? 1));
   }
   /** SHAs whose checks and statuses have already been fetched for this month. */
   async shasDone(month) {
@@ -20158,6 +20180,8 @@ function toRunRecord(raw) {
     run_number: raw.run_number ?? null,
     run_attempt: raw.run_attempt ?? null,
     workflow_id: raw.workflow_id ?? null,
+    path: raw.path ?? null,
+    display_title: raw.display_title ?? null,
     html_url: raw.html_url ?? null
   };
 }
@@ -20388,6 +20412,54 @@ function outOfBudget(api) {
     `preflight ran out of request budget after ${api.requests} requests${api.exhaustReason() ? ` (${api.exhaustReason()})` : ""}. Raise --max-requests, or run \`actions-attic backfill\` first so preflight can count from the archive instead.`
   );
 }
+async function resolveRetention(opts) {
+  const log = opts.log ?? (() => {
+  });
+  const warn = opts.warn ?? (() => {
+  });
+  const now = opts.now ?? /* @__PURE__ */ new Date();
+  let isPublic = false;
+  let repoCreatedAt = null;
+  let settings = null;
+  if (opts.api) {
+    const info2 = await opts.api.request(
+      `/repos/${opts.owner}/${opts.repo}`
+    );
+    isPublic = info2.data?.visibility === "public";
+    repoCreatedAt = typeof info2.data?.created_at === "string" ? info2.data.created_at : null;
+    settings = await opts.api.getRetentionSettings(opts.owner, opts.repo);
+  }
+  let retentionDays;
+  let retentionSource;
+  if (opts.retentionDays != null) {
+    retentionDays = opts.retentionDays;
+    retentionSource = "flag";
+  } else if (settings) {
+    retentionDays = settings.days;
+    retentionSource = "api";
+  } else {
+    retentionDays = DEFAULT_RETENTION_DAYS;
+    retentionSource = "default";
+    warn(
+      (opts.api ? "the retention settings endpoint was not readable with this token (classic PATs need the repo scope); " : "no GitHub token, so the repository's own retention setting could not be read; ") + `assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`
+    );
+  }
+  if (settings?.maximumAllowedDays != null && retentionDays > settings.maximumAllowedDays) {
+    log(`${retentionDays} days is above this repository's maximum of ${settings.maximumAllowedDays}; using the maximum`);
+    retentionDays = settings.maximumAllowedDays;
+  }
+  if (isPublic && retentionDays > PUBLIC_MAX_RETENTION_DAYS) {
+    log(`public repositories cap at ${PUBLIC_MAX_RETENTION_DAYS} days; clamping ${retentionDays}`);
+    retentionDays = PUBLIC_MAX_RETENTION_DAYS;
+  }
+  return {
+    retentionDays,
+    retentionSource,
+    cutoffIso: toInstant2(now.getTime() - retentionDays * 864e5),
+    deletionDate: DELETION_DATE,
+    repoCreatedAt
+  };
+}
 async function runPreflight(opts) {
   try {
     return await preflight(opts);
@@ -20402,34 +20474,8 @@ async function preflight(opts) {
   const warn = opts.warn ?? (() => {
   });
   const { api, archive, owner, repo } = opts;
-  const now = opts.now ?? /* @__PURE__ */ new Date();
-  const repoInfo = await api.request(`/repos/${owner}/${repo}`);
-  const isPublic = repoInfo.data?.visibility === "public";
-  const settings = await api.getRetentionSettings(owner, repo);
-  let retentionDays;
-  let retentionSource;
-  if (opts.retentionDays != null) {
-    retentionDays = opts.retentionDays;
-    retentionSource = "flag";
-  } else if (settings) {
-    retentionDays = settings.days;
-    retentionSource = "api";
-  } else {
-    retentionDays = DEFAULT_RETENTION_DAYS;
-    retentionSource = "default";
-    warn(
-      `the retention settings endpoint was not readable with this token (classic PATs need the repo scope); assuming GitHub's ${DEFAULT_RETENTION_DAYS}-day platform default`
-    );
-  }
-  if (settings?.maximumAllowedDays != null && retentionDays > settings.maximumAllowedDays) {
-    log(`${retentionDays} days is above this repository's maximum of ${settings.maximumAllowedDays}; using the maximum`);
-    retentionDays = settings.maximumAllowedDays;
-  }
-  if (isPublic && retentionDays > PUBLIC_MAX_RETENTION_DAYS) {
-    log(`public repositories cap at ${PUBLIC_MAX_RETENTION_DAYS} days; clamping ${retentionDays}`);
-    retentionDays = PUBLIC_MAX_RETENTION_DAYS;
-  }
-  const cutoffIso = toInstant2(now.getTime() - retentionDays * 864e5);
+  const window = await resolveRetention(opts);
+  const { retentionDays, retentionSource, cutoffIso } = window;
   const cutoffMonth = monthOf(cutoffIso);
   const ctx = makeContext({ api, archive, owner, repo, skipChecks: false, skipStatuses: false, log, warn });
   const archived = { runs: 0, checks: 0, statuses: 0 };
@@ -20459,7 +20505,7 @@ async function preflight(opts) {
   const atRiskRuns = await countRuns(api, owner, repo, `<${cutoffIso}`);
   let unarchivedRuns = 0;
   if (atRiskRuns !== archived.runs) {
-    const repoCreated = repoInfo.data?.created_at;
+    const repoCreated = window.repoCreatedAt;
     const candidates = [...archiveMonths];
     if (repoCreated) candidates.push(monthOf(repoCreated));
     const first = candidates.length ? candidates.reduce((a, b) => a < b ? a : b) : cutoffMonth;
@@ -20471,12 +20517,12 @@ async function preflight(opts) {
     for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) {
       const month = indexToMonth(i);
       const ids = archivedRunIds.get(month) ?? /* @__PURE__ */ new Set();
-      const window = monthWindow(month);
-      const end = month === cutoffMonth ? toInstant2(Date.parse(cutoffIso) - 1e3) : `${window.end}T23:59:59Z`;
-      const remote = await countRuns(api, owner, repo, `${window.start}T00:00:00Z..${end}`);
+      const window2 = monthWindow(month);
+      const end = month === cutoffMonth ? toInstant2(Date.parse(cutoffIso) - 1e3) : `${window2.end}T23:59:59Z`;
+      const remote = await countRuns(api, owner, repo, `${window2.start}T00:00:00Z..${end}`);
       if (remote === ids.size) continue;
       const listed = [];
-      const res = await captureWindow(ctx, window, {
+      const res = await captureWindow(ctx, window2, {
         store: async (batch) => {
           listed.push(...batch);
         }
@@ -20536,15 +20582,20 @@ var plural = (count, one, many = `${one}s`) => `${n(count)} ${count === 1 ? one 
 function tally(t) {
   return `${plural(t.runs, "run")}, ${plural(t.checks, "check run")}, ${plural(t.statuses, "status", "statuses")}`;
 }
-var SOURCES = {
+var RETENTION_SOURCES = {
   flag: "--retention-days",
   api: "repository setting",
   default: "GitHub default"
 };
+function retentionLines(window, noun) {
+  return [
+    `retention window: ${plural(window.retentionDays, "day")} (${RETENTION_SOURCES[window.retentionSource]})`,
+    `from ${window.deletionDate}, ${noun} created before ${window.cutoffIso} are deleted`
+  ];
+}
 function formatPreflight(result, nextCommand) {
   const lines = [
-    `retention window: ${plural(result.retentionDays, "day")} (${SOURCES[result.retentionSource]})`,
-    `from ${result.deletionDate}, records created before ${result.cutoffIso} are deleted`,
+    ...retentionLines(result, "records"),
     `at risk: ${tally(result.atRisk)}`,
     `already archived: ${tally(result.archived)}`
   ];
@@ -20557,6 +20608,354 @@ function formatPreflight(result, nextCommand) {
     );
   }
   return lines.join("\n");
+}
+
+// src/provenance.ts
+var REGISTRY = "https://registry.npmjs.org";
+var SLSA_PREDICATE = "https://slsa.dev/provenance/v1";
+var NPM_PUBLISH_PREDICATE = "https://github.com/npm/attestation/tree/main/specs/publish/v0.1";
+var RegistryError = class extends Error {
+  url;
+  status;
+  constructor(message, url, status) {
+    super(message);
+    this.name = "RegistryError";
+    this.url = url;
+    this.status = status;
+  }
+};
+function client(opts) {
+  return {
+    registry: (opts.registry ?? process.env.NPM_CONFIG_REGISTRY ?? REGISTRY).replace(/\/+$/, ""),
+    fetchImpl: opts.fetchImpl ?? fetch,
+    sleep: opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+    timeoutMs: opts.timeoutMs ?? 2e4,
+    log: opts.log ?? (() => {
+    }),
+    warn: opts.warn ?? (() => {
+    })
+  };
+}
+var NAME_RE = /^(?:@[^/\s@]+\/)?[^/\s@]+$/;
+function assertPackageName(name) {
+  if (!NAME_RE.test(name) || name.startsWith(".") || name.startsWith("_") || name.includes("..")) {
+    throw new RegistryError(`"${name}" is not a valid npm package name`, "", null);
+  }
+  return name;
+}
+function parsePackageSpec(spec) {
+  const at = spec.lastIndexOf("@");
+  if (at > 0) return { name: assertPackageName(spec.slice(0, at)), version: spec.slice(at + 1) || null };
+  return { name: assertPackageName(spec), version: null };
+}
+function packumentUrl(registry, name) {
+  return `${registry}/${encodeURIComponent(name)}`;
+}
+function attestationsUrl(registry, name, version) {
+  return `${registry}/-/npm/v1/attestations/${encodeURIComponent(`${name}@${version}`)}`;
+}
+async function getJson(c, url) {
+  for (let attempt = 1; ; attempt++) {
+    let res;
+    try {
+      res = await c.fetchImpl(url, {
+        headers: { accept: "application/json", "user-agent": "actions-attic" },
+        signal: AbortSignal.timeout(c.timeoutMs)
+      });
+    } catch (err) {
+      if (attempt < 3) {
+        await c.sleep(500 * attempt);
+        continue;
+      }
+      const why = err instanceof Error ? err.message : String(err);
+      throw new RegistryError(`could not reach ${url} (${why}). Check your network or proxy settings.`, url, null);
+    }
+    if (res.status === 404) return null;
+    if ((res.status === 429 || res.status >= 500) && attempt < 3) {
+      const retryAfter = Number(res.headers.get("retry-after") ?? "0");
+      const wait = retryAfter > 0 && retryAfter <= 30 ? retryAfter * 1e3 : 500 * attempt;
+      c.warn(`the registry returned ${res.status} for ${url}; retrying in ${Math.round(wait / 1e3)}s`);
+      await c.sleep(wait);
+      continue;
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      const detail = text.trim().slice(0, 200);
+      throw new RegistryError(
+        `the registry returned ${res.status} for ${url}${detail ? `: ${detail}` : ""}`,
+        url,
+        res.status
+      );
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new RegistryError(`the registry returned something that is not JSON for ${url}`, url, res.status);
+    }
+  }
+}
+async function fetchPackument(name, opts = {}) {
+  const c = client(opts);
+  const url = packumentUrl(c.registry, assertPackageName(name));
+  const data = await getJson(c, url);
+  if (!data) throw new RegistryError(`no package named "${name}" on ${c.registry}`, url, 404);
+  if (!data.versions || typeof data.versions !== "object") {
+    throw new RegistryError(`${name} has no version list on ${c.registry}`, url, null);
+  }
+  return { versions: data.versions, time: data.time ?? {} };
+}
+function extractRunPointer(doc) {
+  const list = doc?.attestations;
+  if (!Array.isArray(list) || list.length === 0) return { run: null, note: "the attestations document is empty" };
+  const slsa = list.find((a) => a?.predicateType === SLSA_PREDICATE);
+  if (!slsa) {
+    const seen = list.map((a) => a?.predicateType).filter((t) => typeof t === "string");
+    const only = seen.length === 1 && seen[0] === NPM_PUBLISH_PREDICATE ? " (only npm publish)" : "";
+    return { run: null, note: `no SLSA provenance statement in the bundle${only}` };
+  }
+  const payload = slsa.bundle?.dsseEnvelope?.payload;
+  if (typeof payload !== "string" || payload === "") return { run: null, note: "the DSSE envelope carries no payload" };
+  let statement;
+  try {
+    const json = Buffer.from(payload, "base64").toString("utf8");
+    statement = JSON.parse(json);
+  } catch {
+    return { run: null, note: "the DSSE payload is not base64-encoded JSON" };
+  }
+  const invocationId = statement?.predicate?.runDetails?.metadata?.invocationId;
+  if (typeof invocationId !== "string" || invocationId === "") {
+    return { run: null, note: "the SLSA statement has no runDetails.metadata.invocationId" };
+  }
+  const run2 = parseInvocationId(invocationId);
+  return run2 ? { run: run2, note: null } : { run: null, note: `invocationId is not an Actions run URL: ${invocationId}` };
+}
+var INVOCATION_RE = /^(https?:\/\/[^/]+)\/([^/]+)\/([^/]+)\/actions\/runs\/(\d+)(?:\/attempts\/(\d+))?\/?$/;
+function parseInvocationId(url) {
+  const m = INVOCATION_RE.exec(url.trim());
+  if (!m) return null;
+  const runId = Number(m[4]);
+  if (!Number.isSafeInteger(runId)) return null;
+  return { host: m[1], owner: m[2], repo: m[3], runId, attempt: m[5] ? Number(m[5]) : 1, url: url.trim() };
+}
+async function collectProvenance(spec, opts = {}) {
+  const c = client(opts);
+  const { name, version: pinned } = parsePackageSpec(spec);
+  const packument = await fetchPackument(name, opts);
+  let names = Object.keys(packument.versions);
+  if (opts.version ?? pinned) {
+    const wanted = opts.version ?? pinned;
+    if (!names.includes(wanted)) {
+      throw new RegistryError(`${name} has no version ${wanted} on ${c.registry}`, packumentUrl(c.registry, name), 404);
+    }
+    names = [wanted];
+  }
+  names.sort((a, b) => (packument.time[a] ?? "").localeCompare(packument.time[b] ?? "")).reverse();
+  const versions = [];
+  for (const version of names) {
+    const publishedAt = packument.time[version] ?? null;
+    const advertised = packument.versions[version]?.dist?.attestations?.url !== void 0;
+    if (!advertised && !opts.probeAll) {
+      versions.push({ version, publishedAt, hasAttestation: false, run: null, note: null });
+      continue;
+    }
+    const doc = await getJson(c, attestationsUrl(c.registry, name, version));
+    if (doc === null) {
+      const note2 = advertised ? "the attestations endpoint returned 404 for this version" : null;
+      versions.push({ version, publishedAt, hasAttestation: false, run: null, note: note2 });
+      continue;
+    }
+    const { run: run2, note } = extractRunPointer(doc);
+    versions.push({ version, publishedAt, hasAttestation: true, run: run2, note });
+  }
+  return { package: name, registry: c.registry, versions };
+}
+async function resolveProvenance(opts) {
+  const { collected, archive, scope, window } = opts;
+  const oldest = archive?.manifest.backfillOldestMonth ?? null;
+  const counts = {
+    archived: 0,
+    missing: 0,
+    beforeArchive: 0,
+    outOfScope: 0,
+    noArchive: 0,
+    noProvenance: 0,
+    unreadable: 0
+  };
+  const reports = [];
+  let withProvenance = 0;
+  for (const v of collected.versions) {
+    const base = { version: v.version, publishedAt: v.publishedAt, run: v.run, note: v.note };
+    if (!v.hasAttestation) {
+      counts.noProvenance++;
+      reports.push({ ...base, state: "no-provenance", runCreatedAt: null, deleted: false, atRisk: false });
+      continue;
+    }
+    withProvenance++;
+    if (!v.run) {
+      counts.unreadable++;
+      reports.push({ ...base, state: "unreadable", runCreatedAt: null, deleted: false, atRisk: false });
+      continue;
+    }
+    const { state, runCreatedAt, note } = await placeRun(v.run, archive, scope, oldest, v.publishedAt);
+    const when = runCreatedAt ?? v.publishedAt;
+    const deleted = state !== "out-of-scope" && when !== null && when < window.cutoffIso;
+    const atRisk = deleted && (state === "missing" || state === "before-archive");
+    counts[COUNT_KEY[state]]++;
+    reports.push({ ...base, note: note ?? v.note, state, runCreatedAt, deleted, atRisk });
+  }
+  const unarchived = reports.filter((r) => r.state === "missing" || r.state === "before-archive");
+  const { retentionDays, retentionSource, cutoffIso, deletionDate } = window;
+  return {
+    retentionDays,
+    retentionSource,
+    cutoffIso,
+    deletionDate,
+    package: collected.package,
+    registry: collected.registry,
+    repo: scope ? `${scope.owner}/${scope.repo}` : null,
+    versions: collected.versions.length,
+    withProvenance,
+    archiveOldestMonth: oldest,
+    counts,
+    unarchivedAtRisk: unarchived.filter((r) => r.atRisk).length,
+    unarchivedLater: unarchived.filter((r) => !r.atRisk).length,
+    otherRepos: [
+      ...new Set(reports.filter((r) => r.state === "out-of-scope").map((r) => `${r.run.owner}/${r.run.repo}`))
+    ].sort(),
+    reports
+  };
+}
+var COUNT_KEY = {
+  archived: "archived",
+  missing: "missing",
+  "before-archive": "beforeArchive",
+  "out-of-scope": "outOfScope",
+  "no-archive": "noArchive",
+  "no-provenance": "noProvenance",
+  unreadable: "unreadable"
+};
+async function placeRun(run2, archive, scope, oldest, publishedAt) {
+  const sameRepo = (a, b) => a.toLowerCase() === b.toLowerCase();
+  if (scope && !(sameRepo(run2.owner, scope.owner) && sameRepo(run2.repo, scope.repo))) {
+    return { state: "out-of-scope", runCreatedAt: null, note: `run belongs to ${run2.owner}/${run2.repo}` };
+  }
+  if (!archive) return { state: "no-archive", runCreatedAt: null, note: null };
+  const attempts = await archive.runAttempts(run2.runId);
+  const exact = attempts.find((r) => (r.run_attempt ?? 1) === run2.attempt);
+  if (exact) return { state: "archived", runCreatedAt: exact.created_at, note: null };
+  if (attempts.length > 0) {
+    const held = attempts.map((r) => r.run_attempt ?? 1).join(", ");
+    return {
+      state: "missing",
+      runCreatedAt: null,
+      note: `attempt ${run2.attempt} is not archived; the attic holds attempt ${held}`
+    };
+  }
+  if (oldest && publishedAt && monthOf(publishedAt) < oldest) {
+    return {
+      state: "before-archive",
+      runCreatedAt: null,
+      note: `published before ${oldest}, the oldest month the backfill has reached`
+    };
+  }
+  return { state: "missing", runCreatedAt: null, note: null };
+}
+var n2 = (value) => value.toLocaleString("en-US");
+var plural2 = (count, one, many = `${one}s`) => `${n2(count)} ${count === 1 ? one : many}`;
+var agree = (count, one, many) => count === 1 ? one : many;
+var AT_RISK = {
+  archived: "no",
+  missing: "YES",
+  "before-archive": "YES",
+  "out-of-scope": "-",
+  "no-archive": "?",
+  "no-provenance": "-",
+  unreadable: "-"
+};
+var ARCHIVED = {
+  archived: "yes",
+  missing: "no",
+  "before-archive": "no",
+  "out-of-scope": "-",
+  "no-archive": "?",
+  "no-provenance": "-",
+  unreadable: "-"
+};
+function stateCells(r) {
+  return {
+    archived: ARCHIVED[r.state],
+    atRisk: r.atRisk ? "YES" : r.state === "missing" || r.state === "before-archive" ? "later" : AT_RISK[r.state]
+  };
+}
+function columns(rows) {
+  const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
+  return rows.map((r) => r.map((cell, i) => i === r.length - 1 ? cell : cell.padEnd(widths[i])).join("  ").trimEnd());
+}
+function formatProvenance(result, nextCommand, showAll = false) {
+  const lines = [
+    `${result.package}: ${plural2(result.versions, "published version")}, ${n2(result.withProvenance)} with provenance`,
+    ...retentionLines(result, "runs")
+  ];
+  const shown = result.reports.filter((r) => showAll || r.state !== "no-provenance");
+  if (shown.length > 0) {
+    const rows = [["version", "run", "created", "archived", "at risk"]];
+    for (const r of shown) {
+      const cells = stateCells(r);
+      rows.push([
+        r.version,
+        r.run ? `${r.run.owner}/${r.run.repo} #${r.run.runId}/${r.run.attempt}` : "-",
+        (r.runCreatedAt ?? r.publishedAt ?? "-").slice(0, 10),
+        cells.archived,
+        cells.atRisk
+      ]);
+    }
+    lines.push("", ...columns(rows));
+  }
+  const notes = result.reports.filter((r) => r.note && (showAll || r.state !== "no-provenance"));
+  if (notes.length > 0) lines.push("", ...notes.map((r) => `${r.version}: ${r.note}`));
+  lines.push("", ...verdict(result, nextCommand));
+  return lines.join("\n");
+}
+function verdict(result, nextCommand) {
+  const lines = [];
+  if (result.withProvenance === 0) {
+    lines.push(`No published version of ${result.package} carries provenance, so none of them names a workflow run.`);
+    return lines;
+  }
+  if (result.counts.noArchive > 0) {
+    lines.push(
+      `${plural2(result.counts.noArchive, "run")} named by provenance, with no archive to compare against. Pass --archive, or let it read the archive ref.`
+    );
+  }
+  if (result.unarchivedAtRisk > 0) {
+    const count = result.unarchivedAtRisk;
+    lines.push(
+      `${plural2(count, "provenance-referenced run")} ${agree(count, "is", "are")} not in the attic and will be deleted on ${result.deletionDate}.`,
+      `Run: ${nextCommand}`
+    );
+  } else if (result.counts.archived > 0 && result.unarchivedLater === 0) {
+    lines.push(`Every provenance-referenced run for ${result.repo ?? result.package} is in the attic.`);
+  }
+  if (result.unarchivedLater > 0) {
+    const count = result.unarchivedLater;
+    lines.push(
+      `${plural2(count, "run")} ${agree(count, "survives", "survive")} ${result.deletionDate} and ${agree(count, "ages", "age")} out of the retention window afterwards; archive ${agree(count, "it", "them")} before then.`
+    );
+  }
+  if (result.counts.beforeArchive > 0) {
+    lines.push(
+      `${plural2(result.counts.beforeArchive, "run")} ${agree(result.counts.beforeArchive, "predates", "predate")} ${result.archiveOldestMonth}, the oldest month the backfill has reached. Raise --months to go further back.`
+    );
+  }
+  if (result.otherRepos.length > 0) {
+    lines.push(
+      `${plural2(result.counts.outOfScope, "version")} ${agree(result.counts.outOfScope, "names", "name")} a repository this archive does not cover (${result.otherRepos.join(", ")}); archive those separately.`
+    );
+  }
+  if (result.counts.unreadable > 0) {
+    lines.push(`${plural2(result.counts.unreadable, "attestation")} could not be read; see the notes above.`);
+  }
+  return lines;
 }
 
 // src/backfill.ts
@@ -20633,16 +21032,16 @@ async function backfill(ctx, opts) {
     stoppedBecause
   };
 }
-var n2 = (value) => value.toLocaleString("en-US");
+var n3 = (value) => value.toLocaleString("en-US");
 function backfillMessage(result) {
   if (result.monthsCompleted.length > 0) {
     const months = [...result.monthsCompleted].sort();
     const span = months.length === 1 ? months[0] : `${months[0]}..${months[months.length - 1]}`;
-    return `attic: backfill ${span} (${n2(result.added.runs)} runs)`;
+    return `attic: backfill ${span} (${n3(result.added.runs)} runs)`;
   }
   if (result.added.runs > 0 || result.added.checks > 0) {
     const month = result.monthsTouched[result.monthsTouched.length - 1] ?? "history";
-    return `attic: backfill ${month} in progress (${n2(result.added.runs)} runs)`;
+    return `attic: backfill ${month} in progress (${n3(result.added.runs)} runs)`;
   }
   return null;
 }
@@ -20807,8 +21206,9 @@ async function run() {
     return;
   }
   const mode = input("mode", "auto");
-  if (mode !== "preflight" && !MODES.includes(mode)) {
-    setFailed(`input "mode" must be one of ${MODES.join(", ")}, preflight, got "${mode}"`);
+  const reportOnly = mode === "preflight" || mode === "provenance";
+  if (!reportOnly && !MODES.includes(mode)) {
+    setFailed(`input "mode" must be one of ${MODES.join(", ")}, preflight, provenance, got "${mode}"`);
     return;
   }
   const host = process.env.GITHUB_REPOSITORY ?? "";
@@ -20844,11 +21244,15 @@ async function run() {
   });
   if (backend.isNew) {
     info(
-      mode === "preflight" ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`
+      reportOnly ? `${ref} does not exist yet; nothing is archived` : `${ref} does not exist yet; this run will create it`
     );
   }
   if (mode === "preflight") {
     await preflightRun(api, backend, owner, repo);
+    return;
+  }
+  if (mode === "provenance") {
+    await provenanceRun(api, backend, owner, repo);
     return;
   }
   const summary2 = await runArchive({
@@ -20889,7 +21293,7 @@ async function run() {
     );
   }
   const totals = summary2.archive.manifest.counts;
-  const n3 = (value) => value.toLocaleString("en-US");
+  const n4 = (value) => value.toLocaleString("en-US");
   const state = summary2.archive.manifest.backfillComplete ? "Backfill complete." : `Backfill in progress${summary2.frontier ? `, frontier \`${summary2.frontier}\`` : ""}. The next run continues from here.`;
   await summary.addHeading(`actions-attic: ${owner}/${repo}`, 3).addRaw(
     summary2.commit ? `Committed \`${summary2.message}\` to \`${ref}\`.${browseUrl ? ` [Browse this commit](${browseUrl})` : ""}` : `Nothing new on \`${ref}\`; no commit made.`,
@@ -20900,10 +21304,10 @@ async function run() {
       { data: "new this run", header: true },
       { data: "total archived", header: true }
     ],
-    ["workflow runs", n3(summary2.runs), n3(totals.runs)],
-    ["check runs", n3(summary2.checks), n3(totals.checks)],
-    ["commit statuses", n3(summary2.statuses), n3(totals.statuses)]
-  ]).addRaw(`${state} ${n3(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`, true).write();
+    ["workflow runs", n4(summary2.runs), n4(totals.runs)],
+    ["check runs", n4(summary2.checks), n4(totals.checks)],
+    ["commit statuses", n4(summary2.statuses), n4(totals.statuses)]
+  ]).addRaw(`${state} ${n4(summary2.requests)} API request${summary2.requests === 1 ? "" : "s"} used.`, true).write();
 }
 async function preflightRun(api, backend, owner, repo) {
   const retentionRaw = getInput("retention-days").trim();
@@ -20932,11 +21336,81 @@ async function preflightRun(api, backend, owner, repo) {
     );
   }
 }
+async function provenanceRun(api, backend, owner, repo) {
+  const spec = getInput("package").trim();
+  if (!spec) {
+    setFailed("mode: provenance needs a `package` input, e.g. `package: my-package`.");
+    return;
+  }
+  const retentionRaw = getInput("retention-days").trim();
+  const retentionDays = retentionRaw === "" ? null : intInput("retention-days", 90, 1, 3650);
+  const failOn = boolInput("fail-on-unarchived");
+  const collected = await collectProvenance(spec, {
+    registry: input("registry", "https://registry.npmjs.org"),
+    probeAll: boolInput("probe-all"),
+    log: (m) => info(m),
+    warn: (m) => warning(m)
+  });
+  const archive = await Archive.open(backend, `${owner}/${repo}`);
+  const window = await resolveRetention({
+    api,
+    owner,
+    repo,
+    retentionDays,
+    log: (m) => info(m),
+    warn: (m) => warning(m)
+  });
+  const result = await resolveProvenance({ collected, archive, scope: { owner, repo }, window });
+  setOutput("retention-days", result.retentionDays);
+  setOutput("retention-source", result.retentionSource);
+  setOutput("unarchived-total", result.unarchivedAtRisk);
+  setOutput("provenance-json", JSON.stringify(result));
+  const next = "this workflow with mode auto or backfill until it reports backfill complete";
+  info(formatProvenance(result, next));
+  await writeProvenanceSummary(result, api.requests, next);
+  if (failOn && result.unarchivedAtRisk > 0) {
+    setFailed(
+      `${result.unarchivedAtRisk.toLocaleString("en-US")} provenance-referenced run${result.unarchivedAtRisk === 1 ? " is" : "s are"} not archived and will be deleted on ${result.deletionDate}. Run ${next}.`
+    );
+  }
+}
+async function writeProvenanceSummary(result, requests, nextCommand) {
+  const n4 = (value) => value.toLocaleString("en-US");
+  const rows = [
+    [
+      { data: "version", header: true },
+      { data: "run", header: true },
+      { data: "created", header: true },
+      { data: "archived", header: true },
+      { data: "at risk", header: true }
+    ]
+  ];
+  for (const r of result.reports) {
+    if (r.state === "no-provenance") continue;
+    const cells = stateCells(r);
+    rows.push([
+      r.version,
+      r.run ? `[${r.run.owner}/${r.run.repo} #${r.run.runId}/${r.run.attempt}](${r.run.url})` : "-",
+      (r.runCreatedAt ?? r.publishedAt ?? "-").slice(0, 10),
+      cells.archived,
+      cells.atRisk === "YES" ? "**YES**" : cells.atRisk
+    ]);
+  }
+  const summary2 = summary.addHeading(`actions-attic provenance: ${result.package}`, 3).addRaw(
+    `${n4(result.versions)} published version${result.versions === 1 ? "" : "s"}, ${n4(result.withProvenance)} with provenance. Retention window ${n4(result.retentionDays)} days (${RETENTION_SOURCES[result.retentionSource]}); from ${result.deletionDate}, runs created before \`${result.cutoffIso}\` are deleted.`,
+    true
+  ).addBreak();
+  if (rows.length > 1) summary2.addTable(rows);
+  await summary2.addRaw(verdict(result, nextCommand).join(" "), true).addBreak().addRaw(
+    `Signature verification is unaffected: it never fetches the run. What breaks is the audit trail the pointer names. ${n4(requests)} API request${requests === 1 ? "" : "s"} used.`,
+    true
+  ).write();
+}
 async function writePreflightSummary(result, requests) {
-  const n3 = (value) => value.toLocaleString("en-US");
-  const verdict = result.unarchived.total > 0 ? `**${n3(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.` : "Everything at risk is already in the attic.";
+  const n4 = (value) => value.toLocaleString("en-US");
+  const verdict2 = result.unarchived.total > 0 ? `**${n4(result.unarchived.total)} records are not archived** and will be deleted once they age past the window.` : "Everything at risk is already in the attic.";
   await summary.addHeading("actions-attic preflight", 3).addRaw(
-    `Retention window: ${n3(result.retentionDays)} days (${result.retentionSource}). From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict}`,
+    `Retention window: ${n4(result.retentionDays)} days (${RETENTION_SOURCES[result.retentionSource]}). From ${result.deletionDate}, records created before \`${result.cutoffIso}\` are deleted. ${verdict2}`,
     true
   ).addBreak().addTable([
     [
@@ -20945,10 +21419,10 @@ async function writePreflightSummary(result, requests) {
       { data: "archived", header: true },
       { data: "unarchived", header: true }
     ],
-    ["workflow runs", n3(result.atRisk.runs), n3(result.archived.runs), n3(result.unarchived.runs)],
-    ["check runs", n3(result.atRisk.checks), n3(result.archived.checks), n3(result.unarchived.checks)],
-    ["commit statuses", n3(result.atRisk.statuses), n3(result.archived.statuses), n3(result.unarchived.statuses)]
-  ]).addRaw(`${n3(requests)} API request${requests === 1 ? "" : "s"} used.`, true).write();
+    ["workflow runs", n4(result.atRisk.runs), n4(result.archived.runs), n4(result.unarchived.runs)],
+    ["check runs", n4(result.atRisk.checks), n4(result.archived.checks), n4(result.unarchived.checks)],
+    ["commit statuses", n4(result.atRisk.statuses), n4(result.archived.statuses), n4(result.unarchived.statuses)]
+  ]).addRaw(`${n4(requests)} API request${requests === 1 ? "" : "s"} used.`, true).write();
 }
 run().catch((err) => {
   if (err instanceof BudgetExhausted) {
