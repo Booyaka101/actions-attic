@@ -10,7 +10,8 @@ import { type Month, type Window, formatWindow, monthWindow, splitWindow } from 
 
 /**
  * GitHub returns at most 1,000 results per search on these filters. `total_count`
- * is itself capped at 2,500 (RUNS_COUNT_CAP), which still reads as over this.
+ * is itself capped at 2,500 (RUNS_COUNT_CAP), which is still above this, so a
+ * window over the search cap still reads as one.
  */
 export const SEARCH_CAP = 1000;
 

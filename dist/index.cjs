@@ -19673,7 +19673,7 @@ function endMs(bound) {
   return isInstant(bound) ? Date.parse(bound) : toUtc(bound) + DAY - SECOND;
 }
 function toInstant(ms) {
-  return new Date(ms).toISOString().replace(".000Z", "Z");
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 function splitWindow(w) {
   if (!isInstant(w.start) && !isInstant(w.end)) {
@@ -20400,9 +20400,6 @@ var RUNS_COUNT_CAP = 2500;
 var ACTIONS_EPOCH = "2018-01-01T00:00:00Z";
 var DEFAULT_RETENTION_DAYS = 90;
 var PUBLIC_MAX_RETENTION_DAYS = 90;
-function toInstant2(ms) {
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
 async function totalCount(api, owner, repo, created) {
   const { data } = await api.request(`/repos/${owner}/${repo}/actions/runs`, {
     params: { created, per_page: 1 }
@@ -20421,6 +20418,12 @@ async function countRunsExact(api, owner, repo, window, warn = () => {
   let sum = 0;
   for (const half of halves) sum += await countRunsExact(api, owner, repo, half, warn);
   return sum;
+}
+async function countRunsBefore(api, owner, repo, month, warn) {
+  const before = `${month}-01T00:00:00Z`;
+  const total = await totalCount(api, owner, repo, `<${before}`);
+  if (total < RUNS_COUNT_CAP) return total;
+  return countRunsExact(api, owner, repo, { start: ACTIONS_EPOCH, end: toInstant(Date.parse(before) - 1e3) }, warn);
 }
 function outOfBudget(api) {
   return new Error(
@@ -20470,7 +20473,7 @@ async function resolveRetention(opts) {
   return {
     retentionDays,
     retentionSource,
-    cutoffIso: toInstant2(now.getTime() - retentionDays * 864e5),
+    cutoffIso: toInstant(now.getTime() - retentionDays * 864e5),
     deletionDate: DELETION_DATE,
     repoCreatedAt
   };
@@ -20489,8 +20492,8 @@ async function preflight(opts) {
   const warn = opts.warn ?? (() => {
   });
   const { api, archive, owner, repo } = opts;
-  const window = await resolveRetention(opts);
-  const { retentionDays, retentionSource, cutoffIso } = window;
+  const retention = await resolveRetention(opts);
+  const { retentionDays, retentionSource, cutoffIso } = retention;
   const cutoffMonth = monthOf(cutoffIso);
   const ctx = makeContext({ api, archive, owner, repo, skipChecks: false, skipStatuses: false, log, warn });
   const archived = { runs: 0, checks: 0, statuses: 0 };
@@ -20517,61 +20520,50 @@ async function preflight(opts) {
       if (!status.created_at || status.created_at < cutoffIso) archived.statuses++;
     }
   }
+  let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
+  const capped = atRiskRuns >= RUNS_COUNT_CAP;
   const candidates = [...archiveMonths];
-  if (window.repoCreatedAt) candidates.push(monthOf(window.repoCreatedAt));
-  const first = candidates.reduce((a, b) => a < b ? a : b, cutoffMonth);
+  if (retention.repoCreatedAt) candidates.push(monthOf(retention.repoCreatedAt));
+  const oldest = candidates.reduce((a, b) => a < b ? a : b, cutoffMonth);
+  const firstMonth = capped && oldest < monthOf(ACTIONS_EPOCH) ? monthOf(ACTIONS_EPOCH) : oldest;
   const months = [];
-  for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
-  const countWindow = (month) => {
+  for (let i = monthToIndex(firstMonth); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
+  const atRiskWindow = (month) => {
     const { start, end } = monthWindow(month);
     return {
       start: `${start}T00:00:00Z`,
-      end: month === cutoffMonth ? toInstant2(Date.parse(cutoffIso) - 1e3) : `${end}T23:59:59Z`
+      end: month === cutoffMonth ? toInstant(Date.parse(cutoffIso) - 1e3) : `${end}T23:59:59Z`
     };
   };
-  const countPreScope = async () => {
-    if (first <= "0000-01") return 0;
-    const before = `${first}-01T00:00:00Z`;
-    const total = await totalCount(api, owner, repo, `<${before}`);
-    if (total < RUNS_COUNT_CAP) return total;
-    return countRunsExact(api, owner, repo, { start: ACTIONS_EPOCH, end: toInstant2(Date.parse(before) - 1e3) }, warn);
-  };
-  const remoteByMonth = /* @__PURE__ */ new Map();
-  const countMonth = async (month) => {
-    let remote = remoteByMonth.get(month);
-    if (remote === void 0) {
-      remote = await countRunsExact(api, owner, repo, countWindow(month), warn);
-      remoteByMonth.set(month, remote);
+  const emptyLead = async (rest) => {
+    let lo = 0;
+    let hi = rest.length;
+    while (hi - lo >= 4) {
+      const mid = lo + Math.floor((hi - lo) / 2);
+      const span = { start: atRiskWindow(rest[lo]).start, end: atRiskWindow(rest[mid - 1]).end };
+      if (await totalCount(api, owner, repo, formatWindow(span)) > 0) hi = mid;
+      else lo = mid;
     }
-    return remote;
+    return lo;
   };
-  let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
-  let preScope = null;
-  if (atRiskRuns >= RUNS_COUNT_CAP) {
-    log(`GitHub stops counting at ${RUNS_COUNT_CAP.toLocaleString("en-US")}; counting runs month by month`);
-    preScope = await countPreScope();
-    atRiskRuns = preScope;
-    for (const month of months) {
-      if (month < monthOf(ACTIONS_EPOCH)) remoteByMonth.set(month, 0);
-      atRiskRuns += await countMonth(month);
-    }
-  }
   let unarchivedRuns = 0;
-  if (atRiskRuns !== archived.runs) {
-    preScope ??= await countPreScope();
+  if (capped || atRiskRuns !== archived.runs) {
+    if (capped) log(`GitHub stops counting at ${RUNS_COUNT_CAP.toLocaleString("en-US")}; counting runs month by month`);
+    const preScope = firstMonth > oldest ? 0 : await countRunsBefore(api, owner, repo, firstMonth, warn);
     if (preScope > 0) {
-      warn(`${preScope} runs predate ${first}; counting them as unarchived without their checks and statuses`);
+      warn(`${preScope} runs predate ${firstMonth}; counting them as unarchived without their checks and statuses`);
       unarchivedRuns += preScope;
     }
-    let counted = preScope;
-    for (const month of months) {
+    atRiskRuns = preScope;
+    for (let i = 0; i < months.length; i++) {
+      const month = months[i];
       const ids = archivedRunIds.get(month) ?? /* @__PURE__ */ new Set();
-      const window2 = monthWindow(month);
-      const remote = await countMonth(month);
-      counted += remote;
-      if (remote === ids.size) continue;
+      const remote = await countRunsExact(api, owner, repo, atRiskWindow(month), warn);
+      atRiskRuns += remote;
+      if (capped && i === 0 && remote === 0) i += await emptyLead(months.slice(1));
+      if (remote === ids.size || capped && remote === 0) continue;
       const listed = [];
-      const res = await captureWindow(ctx, window2, {
+      const res = await captureWindow(ctx, monthWindow(month), {
         store: async (batch) => {
           listed.push(...batch);
         }
@@ -20587,7 +20579,6 @@ async function preflight(opts) {
         }
       }
     }
-    atRiskRuns = counted;
   }
   const fresh = { runs: 0, checks: 0, statuses: 0 };
   if (pendingShas.size > 0) {

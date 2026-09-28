@@ -112,8 +112,9 @@ function endMs(bound: string): number {
   return isInstant(bound) ? Date.parse(bound) : toUtc(bound) + DAY - SECOND;
 }
 
-function toInstant(ms: number): string {
-  return new Date(ms).toISOString().replace('.000Z', 'Z');
+/** Same second-granularity shape GitHub uses in created_at, so strings compare. */
+export function toInstant(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 /**

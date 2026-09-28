@@ -16,10 +16,16 @@
   A count that reads 2,500 is now split: month by month from the repository's creation
   (or its oldest archived month, if older) to the cutoff, and any month still at the cap
   is halved, down to the second if a day needs it. Months before 2018 are skipped, since
-  no Actions run is that old. Below the cap it makes the same requests as 1.4.0. SipMart
-  takes 9 count requests. More than 2,500 runs inside a single second count as 2,500, with a
-  warning that the number is a lower bound. `countRunsExact` and `RUNS_COUNT_CAP` are
-  exported for anyone counting runs themselves.
+  no Actions run is that old, and so is a stretch of empty months before a repository's
+  first run, a few requests at a time: `cli/cli`, created in 2019, takes 27 count requests
+  for its 22,715 runs at risk, and SipMart takes 10. More than 2,500 runs inside a single
+  second count as 2,500, with a warning that the number is a lower bound. `countRunsExact`
+  and `RUNS_COUNT_CAP` are exported for anyone counting runs themselves.
+
+  Past the cap the archive is always compared month by month, so runs the attic kept
+  after GitHub deleted them cannot offset unarchived runs in another month, and a month
+  GitHub reports empty is not listed just because the attic holds runs from it. Below the
+  cap preflight makes the same requests as 1.4.0.
 
 - The at-risk and unarchived run counts could contradict each other for a few seconds
   after new runs landed, because GitHub's open-ended and per-month counts briefly

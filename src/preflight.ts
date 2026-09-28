@@ -23,6 +23,7 @@ import {
   monthToIndex,
   monthWindow,
   splitWindow,
+  toInstant,
 } from './months.js';
 
 export const DELETION_DATE = '2026-10-01';
@@ -32,10 +33,7 @@ export const DELETION_DATE = '2026-10-01';
  * https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui
  */
 export const RUNS_COUNT_CAP = 2500;
-/**
- * Nothing on GitHub Actions is older than this, so it bounds the pre-creation
- * count, and a capped count skips the months of an older repository before it.
- */
+/** Nothing on GitHub Actions is older than this. */
 const ACTIONS_EPOCH = '2018-01-01T00:00:00Z';
 /** GitHub's platform default for every repository. 400 is only the private-repo maximum. */
 export const DEFAULT_RETENTION_DAYS = 90;
@@ -82,11 +80,6 @@ export interface PreflightResult extends Omit<RetentionWindow, 'repoCreatedAt'> 
   unarchived: Tally & { total: number };
 }
 
-/** Same second-granularity shape GitHub uses in created_at, so strings compare. */
-function toInstant(ms: number): string {
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
-
 /** The raw `total_count` for one `created=` filter, capped at RUNS_COUNT_CAP. */
 async function totalCount(api: Api, owner: string, repo: string, created: string): Promise<number> {
   const { data } = await api.request<{ total_count?: unknown }>(`/repos/${owner}/${repo}/actions/runs`, {
@@ -99,6 +92,8 @@ async function totalCount(api: Api, owner: string, repo: string, created: string
  * Runs created inside `window`, counted exactly: a total at RUNS_COUNT_CAP is
  * halved with splitWindow and both halves counted. Only a one-second window
  * still at the cap cannot be split, and that one is returned as a lower bound.
+ * Both bounds must be dates or both instants: after an instant start, GitHub
+ * reads a date end as that day's midnight.
  */
 export async function countRunsExact(
   api: Api,
@@ -117,6 +112,20 @@ export async function countRunsExact(
   let sum = 0;
   for (const half of halves) sum += await countRunsExact(api, owner, repo, half, warn);
   return sum;
+}
+
+/** Runs created before `month`, exact past the cap by counting up from ACTIONS_EPOCH. */
+async function countRunsBefore(
+  api: Api,
+  owner: string,
+  repo: string,
+  month: Month,
+  warn: (msg: string) => void,
+): Promise<number> {
+  const before = `${month}-01T00:00:00Z`;
+  const total = await totalCount(api, owner, repo, `<${before}`);
+  if (total < RUNS_COUNT_CAP) return total;
+  return countRunsExact(api, owner, repo, { start: ACTIONS_EPOCH, end: toInstant(Date.parse(before) - 1000) }, warn);
 }
 
 function outOfBudget(api: Api): Error {
@@ -206,8 +215,8 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
   const warn = opts.warn ?? (() => {});
   const { api, archive, owner, repo } = opts;
 
-  const window = await resolveRetention(opts);
-  const { retentionDays, retentionSource, cutoffIso } = window;
+  const retention = await resolveRetention(opts);
+  const { retentionDays, retentionSource, cutoffIso } = retention;
   const cutoffMonth = monthOf(cutoffIso);
 
   const ctx = makeContext({ api, archive, owner, repo, skipChecks: false, skipStatuses: false, log, warn });
@@ -239,14 +248,22 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
     }
   }
 
+  // Below the cap the open-ended count is exact, and when it matches the archive
+  // it is the only request. Otherwise one count per month localizes the gap and
+  // only the mismatched months pay for a full listing. The skips further down
+  // apply only past the cap, so uncapped requests stay exactly what 1.4.0 made.
+  let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
+  const capped = atRiskRuns >= RUNS_COUNT_CAP;
+
   const candidates = [...archiveMonths];
-  if (window.repoCreatedAt) candidates.push(monthOf(window.repoCreatedAt));
-  // Capped at the cutoff month, or a repository created after it would count its
-  // own newer runs as predating it.
-  const first = candidates.reduce((a, b) => (a < b ? a : b), cutoffMonth);
+  if (retention.repoCreatedAt) candidates.push(monthOf(retention.repoCreatedAt));
+  // No later than the cutoff month, or a repository created after it would count
+  // its own newer runs as predating it.
+  const oldest = candidates.reduce((a, b) => (a < b ? a : b), cutoffMonth);
+  const firstMonth = capped && oldest < monthOf(ACTIONS_EPOCH) ? monthOf(ACTIONS_EPOCH) : oldest;
   const months: Month[] = [];
-  for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
-  const countWindow = (month: Month): Window => {
+  for (let i = monthToIndex(firstMonth); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
+  const atRiskWindow = (month: Month): Window => {
     const { start, end } = monthWindow(month);
     return {
       start: `${start}T00:00:00Z`,
@@ -254,63 +271,48 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
     };
   };
 
-  // Runs from before `first`: the open-ended count, made exact over a bounded
-  // window only when it reads at the cap.
-  const countPreScope = async (): Promise<number> => {
-    if (first <= '0000-01') return 0;
-    const before = `${first}-01T00:00:00Z`;
-    const total = await totalCount(api, owner, repo, `<${before}`);
-    if (total < RUNS_COUNT_CAP) return total;
-    return countRunsExact(api, owner, repo, { start: ACTIONS_EPOCH, end: toInstant(Date.parse(before) - 1000) }, warn);
+  // Actions often starts years after the repository does. Once the first month
+  // reads empty, a binary search finds how many after it are empty too, so that
+  // stretch costs a few requests rather than one a month.
+  const emptyLead = async (rest: Month[]): Promise<number> => {
+    let lo = 0;
+    let hi = rest.length;
+    while (hi - lo >= 4) {
+      const mid = lo + Math.floor((hi - lo) / 2);
+      const span = { start: atRiskWindow(rest[lo]).start, end: atRiskWindow(rest[mid - 1]).end };
+      if ((await totalCount(api, owner, repo, formatWindow(span))) > 0) hi = mid;
+      else lo = mid;
+    }
+    return lo;
   };
 
-  const remoteByMonth = new Map<Month, number>();
-  const countMonth = async (month: Month): Promise<number> => {
-    let remote = remoteByMonth.get(month);
-    if (remote === undefined) {
-      remote = await countRunsExact(api, owner, repo, countWindow(month), warn);
-      remoteByMonth.set(month, remote);
-    }
-    return remote;
-  };
-
-  // Below the cap the open-ended count is exact and the only request. At the
-  // cap it is summed per month instead, and the mismatch pass reuses those.
-  let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
-  let preScope: number | null = null;
-  if (atRiskRuns >= RUNS_COUNT_CAP) {
-    log(`GitHub stops counting at ${RUNS_COUNT_CAP.toLocaleString('en-US')}; counting runs month by month`);
-    preScope = await countPreScope();
-    atRiskRuns = preScope;
-    for (const month of months) {
-      if (month < monthOf(ACTIONS_EPOCH)) remoteByMonth.set(month, 0);
-      atRiskRuns += await countMonth(month);
-    }
-  }
-
-  // When the totals disagree, one count per month localizes the gap and only
-  // the mismatched months pay for a full listing.
   let unarchivedRuns = 0;
-  if (atRiskRuns !== archived.runs) {
-    preScope ??= await countPreScope();
+  if (capped || atRiskRuns !== archived.runs) {
+    if (capped) log(`GitHub stops counting at ${RUNS_COUNT_CAP.toLocaleString('en-US')}; counting runs month by month`);
+    // Clamped to ACTIONS_EPOCH, there is nothing older to count.
+    const preScope = firstMonth > oldest ? 0 : await countRunsBefore(api, owner, repo, firstMonth, warn);
     if (preScope > 0) {
       // Runs from before the repository's own creation date (a transferred
       // repo). Nothing this old is archived, and without listing them their
       // checks and statuses cannot be counted.
-      warn(`${preScope} runs predate ${first}; counting them as unarchived without their checks and statuses`);
+      warn(`${preScope} runs predate ${firstMonth}; counting them as unarchived without their checks and statuses`);
       unarchivedRuns += preScope;
     }
 
-    let counted = preScope;
-    for (const month of months) {
+    // GitHub's counts can briefly disagree with each other, so report the sum
+    // the unarchived runs were reconciled against rather than the open-ended one.
+    atRiskRuns = preScope;
+    for (let i = 0; i < months.length; i++) {
+      const month = months[i];
       const ids = archivedRunIds.get(month) ?? new Set<number>();
-      const window = monthWindow(month);
-      const remote = await countMonth(month);
-      counted += remote;
-      if (remote === ids.size) continue;
+      const remote = await countRunsExact(api, owner, repo, atRiskWindow(month), warn);
+      atRiskRuns += remote;
+      if (capped && i === 0 && remote === 0) i += await emptyLead(months.slice(1));
+      // Nothing on GitHub is nothing unarchived, whatever the attic kept of the month.
+      if (remote === ids.size || (capped && remote === 0)) continue;
 
       const listed: RunRecord[] = [];
-      const res = await captureWindow(ctx, window, {
+      const res = await captureWindow(ctx, monthWindow(month), {
         store: async (batch) => {
           listed.push(...batch);
         },
@@ -326,10 +328,6 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
         }
       }
     }
-    // GitHub's counts can briefly disagree with each other: live, an open-ended
-    // count of 17 against monthly counts summing to 20. Report the sum the
-    // unarchived runs were reconciled against, so the two cannot contradict.
-    atRiskRuns = counted;
   }
 
   // Checks and statuses for commits the archive has not fetched yet.

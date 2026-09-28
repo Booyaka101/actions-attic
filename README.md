@@ -216,10 +216,12 @@ agrees, and one more per month when it does not. Since
 [2026-09-25](https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui)
 GitHub caps `total_count` at 2,500 on a filtered query, so past that preflight counts month by
 month and halves any window that still reads 2,500, two more requests each time, until every
-count is exact. [`qtu11/SipMart`](https://github.com/qtu11/SipMart), 3,838 runs, takes 9. Checks
-and statuses are read from the archive, plus a per-commit fetch for only the commits the
-archive has not covered, so a populated attic makes preflight nearly free and an empty one
-costs about what the backfill it recommends would.
+count is exact. Past the cap, empty months before a repository's first run are skipped a few
+requests at a time, so `cli/cli`, created in 2019 with no runs left from before 2025-08, takes
+27 count requests for its 22,715 at risk. [`qtu11/SipMart`](https://github.com/qtu11/SipMart),
+3,838 runs, takes 10. Checks and statuses are read from the archive, plus a per-commit fetch for
+only the commits the archive has not covered, so a populated attic makes preflight cheap and
+an empty one costs about what the backfill it recommends would.
 
 The Action runs it on a schedule with `mode: preflight`:
 
@@ -483,6 +485,7 @@ The JSONL is plain text, so `grep`, `jq` and `git log` work on it directly. That
   package built anywhere else reports its provenance as unreadable rather than guessing.
 - The 1,000-result search cap is worked around by halving the window, down to the second if a day needs it. Only more than 1,000 runs inside a single second is beyond reach; that warns and takes the 1,000 it can get.
 - The same goes for preflight's run count and GitHub's 2,500 cap on `total_count`. More than 2,500 runs inside a single second count as 2,500, with a warning that the number is a lower bound.
+- Below 2,500 runs, preflight looks month by month only when its total disagrees with the archive's. Runs the attic kept after GitHub deleted them could offset the same number of unarchived runs in another month and go unnoticed. Past 2,500 it always compares month by month.
 - Statuses need pull access. If the token cannot read them the run warns once and carries on with runs and checks.
 - A version whose publish date the registry does not report counts as due for deletion. The
   report says so on the row. Guessing the other way would mark an unknown run safe.

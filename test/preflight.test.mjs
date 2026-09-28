@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { Api } from '../lib/api.js';
 import { Archive } from '../lib/archive.js';
 import { RefBackend } from '../lib/backend.js';
-import { RUNS_COUNT_CAP, formatPreflight, retentionPhrase, runPreflight } from '../lib/preflight.js';
+import { RUNS_COUNT_CAP as CAP, formatPreflight, retentionPhrase, runPreflight } from '../lib/preflight.js';
 import { runArchive } from '../lib/run.js';
 import { makeGitServer } from './helpers/fake-git.mjs';
 
@@ -261,7 +261,6 @@ test('running out of budget is an error with advice, not a checkpoint message', 
   );
 });
 
-const CAP = RUNS_COUNT_CAP;
 const iso = (ms) => new Date(ms).toISOString().replace('.000Z', 'Z');
 
 /** `count` runs `stepMs` apart from `start`, all on one commit. */
@@ -272,10 +271,9 @@ function burst(firstId, start, count, stepMs, sha = 'aaa') {
 /** An archive holding exactly `runs`, with their commits already fetched. */
 function archiveOf(runs) {
   const files = {};
-  for (const r of runs) {
-    const month = r.created_at.slice(0, 7);
-    files[`runs/${month}.jsonl`] = (files[`runs/${month}.jsonl`] ?? '') + `${JSON.stringify(r)}\n`;
-    files[`shas/${month}.txt`] = `${r.head_sha}\n`;
+  for (const [month, inMonth] of Map.groupBy(runs, (r) => r.created_at.slice(0, 7))) {
+    files[`runs/${month}.jsonl`] = jsonl(inMonth);
+    files[`shas/${month}.txt`] = `${[...new Set(inMonth.map((r) => r.head_sha))].join('\n')}\n`;
   }
   return files;
 }
@@ -386,12 +384,38 @@ test('a fully archived busy repo counts past the cap without listing anything', 
   assert.equal(listCalls(calls).length, 0);
 });
 
-test('a capped count does not ask about months from before Actions existed', async () => {
+test('years without a run cost a few requests, and nothing before Actions is asked about', async () => {
   const { result, calls } = await archivedBusyQuarter('2008-04-11T00:00:00Z');
   assert.equal(result.atRisk.runs, 6000);
   assert.equal(result.unarchived.total, 0);
-  // The same 6 as a repository created in 2026-01, plus 2018-01..2025-12.
-  assert.equal(countCalls(calls).length, 6 + 8 * 12);
+  const counts = countCalls(calls).map((c) => new URL(`http://x${c}`).searchParams.get('created'));
+  assert.ok(counts.every((w) => !/^<?20(0\d|1[0-7])-/.test(w)), counts.join('\n'));
+  // The capped open-ended count, 2018-01, 6 probes to find 2026-01, then 2026-01..2026-04.
+  assert.equal(counts.length, 12);
+});
+
+test('below the cap empty months are still counted one by one, as in 1.4.0', async () => {
+  const { result, calls } = await preflight({ runs: [run(1, '2026-03-05T00:00:00Z')] });
+  assert.equal(result.unarchived.runs, 1);
+  // The open-ended count, the pre-creation count, one per month 2025-06..2026-06.
+  assert.equal(countCalls(calls).length, 2 + 13);
+});
+
+test('runs GitHub already deleted cannot hide unarchived ones past the cap', async () => {
+  // Two runs the attic kept from a month GitHub has emptied, and two it never got:
+  // the totals agree at 6,000, the months do not.
+  const remote = busyQuarter();
+  const gone = burst(90_001, '2025-12-10T00:00:00Z', 2, 3_600_000, 'zzz');
+  const { result, calls } = await preflight({
+    runs: remote,
+    files: archiveOf([...gone, ...remote.slice(0, -2)]),
+    repoCreated: '2025-12-01T00:00:00Z',
+    countCap: CAP,
+  });
+  assert.equal(result.atRisk.runs, 6000);
+  assert.equal(result.unarchived.runs, 2);
+  const listed = listCalls(calls);
+  assert.ok(listed.length > 0 && listed.every((c) => c.includes('created=2026-03-')), listed.join('\n'));
 });
 
 test('a repository created after the cutoff month does not count its newer runs', async () => {
