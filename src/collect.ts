@@ -8,7 +8,11 @@ import { Api, BudgetExhausted, HttpError } from './api.js';
 import type { Archive, CheckRecord, RunRecord, StatusRecord } from './archive.js';
 import { type Month, type Window, formatWindow, monthWindow, splitWindow } from './months.js';
 
-/** GitHub returns at most 1,000 results per search on these filters. */
+/**
+ * GitHub returns at most 1,000 results per search on these filters. The
+ * 2,500 cap on `total_count` (RUNS_COUNT_CAP) does not disturb the split test
+ * below: a capped 2,500 still reads as over 1,000.
+ */
 export const SEARCH_CAP = 1000;
 
 export interface Context {

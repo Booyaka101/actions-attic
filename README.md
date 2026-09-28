@@ -120,8 +120,9 @@ Unit and Integration Tests: 272 runs, 266 success, 6 failure, flake rate 2.2% (p
 
 </details>
 
-85 requests, 7,148 runs, no duplicates. The archived counts match what the API reports for the same
-windows exactly: 3,133 for July and 4,015 for August. The `flake` line is checked against the live
+85 requests, 7,148 runs, no duplicates. The archived counts match what the API reported for the same
+windows exactly: 3,133 for July and 4,015 for August. That was before GitHub capped `total_count` at
+2,500, so a single query for August now reads 2,500. The `flake` line is checked against the live
 API for the same window too, where `status=success` reports 266 and `status=failure` reports 6.
 
 `flake` counts only runs that concluded `success` or `failure`; cancelled, skipped and still-running
@@ -210,8 +211,11 @@ Nothing at risk. 126 records already in the attic.
 
 The first command exited 1, the last exited 0. By default preflight compares against the
 `refs/attic/archive` ref the Action writes; `--archive` compares against a local directory
-instead. Counting runs costs one request, because the runs endpoint reports its true
-`total_count` for a `created=` filter even though it serves at most 1,000 results. Checks
+instead. Counting runs costs one request while fewer than 2,500 are at risk. Since
+[2026-09-25](https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui)
+GitHub caps `total_count` at 2,500 on a filtered query, so past that preflight counts month by
+month and halves any window that still reads 2,500, two more requests each time, until every
+count is exact. [`qtu11/SipMart`](https://github.com/qtu11/SipMart), 3,838 runs, takes 9. Checks
 and statuses are read from the archive, plus a per-commit fetch for only the commits the
 archive has not covered, so a populated attic makes preflight nearly free and an empty one
 costs about what the backfill it recommends would.
@@ -477,6 +481,7 @@ The JSONL is plain text, so `grep`, `jq` and `git log` work on it directly. That
   GitHub Actions build type is parsed, in both the SLSA v1 and v0.2 forms npm has published, so a
   package built anywhere else reports its provenance as unreadable rather than guessing.
 - The 1,000-result search cap is worked around by halving the window, down to the second if a day needs it. Only more than 1,000 runs inside a single second is beyond reach; that warns and takes the 1,000 it can get.
+- The same goes for preflight's run count and GitHub's 2,500 cap on `total_count`. More than 2,500 runs inside a single second count as 2,500, with a warning that the number is a lower bound.
 - Statuses need pull access. If the token cannot read them the run warns once and carries on with runs and checks.
 - A version whose publish date the registry does not report counts as due for deletion. The
   report says so on the row. Guessing the other way would mark an unknown run safe.

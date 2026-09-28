@@ -2,20 +2,41 @@
  * How much Actions history the 2026-10-01 retention change will delete, and how
  * much of it the attic already holds.
  *
- * Runs are counted exactly in one request: the runs endpoint's `total_count`
- * reports the true match count for a `created=` filter even though the endpoint
- * refuses to serve past 1,000 results. Checks and statuses have no counting
- * endpoint, so they are read from the archive, plus a per-commit fetch for only
- * the commits the archive has not covered. A populated archive makes preflight
- * cheap; an empty one costs roughly what the backfill it recommends would.
+ * Runs are counted from the runs endpoint's `total_count`, which is exact below
+ * RUNS_COUNT_CAP. A count at the cap is split into smaller windows until each
+ * one reads below it, so a busy repository costs a few more requests but the
+ * number stays exact. Checks and statuses have no counting endpoint, so they
+ * are read from the archive, plus a per-commit fetch for only the commits the
+ * archive has not covered. A populated archive makes preflight cheap; an empty
+ * one costs roughly what the backfill it recommends would.
  */
 
 import { Api, BudgetExhausted, type RetentionSettings } from './api.js';
 import type { Archive, CheckRecord, RunRecord, StatusRecord } from './archive.js';
 import { captureShas, captureWindow, makeContext } from './collect.js';
-import { type Month, indexToMonth, monthOf, monthToIndex, monthWindow } from './months.js';
+import {
+  type Month,
+  type Window,
+  formatWindow,
+  indexToMonth,
+  monthOf,
+  monthToIndex,
+  monthWindow,
+  splitWindow,
+} from './months.js';
 
 export const DELETION_DATE = '2026-10-01';
+/**
+ * Since 2026-09-25 a filtered runs query reports at most this in `total_count`,
+ * so a count at this value means "this many or more".
+ * https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui
+ */
+export const RUNS_COUNT_CAP = 2500;
+/**
+ * Nothing on GitHub Actions is older than this, so it bounds the pre-creation
+ * count, and a capped count skips the months of an older repository before it.
+ */
+const ACTIONS_EPOCH = '2018-01-01T00:00:00Z';
 /** GitHub's platform default for every repository. 400 is only the private-repo maximum. */
 export const DEFAULT_RETENTION_DAYS = 90;
 export const PUBLIC_MAX_RETENTION_DAYS = 90;
@@ -66,11 +87,36 @@ function toInstant(ms: number): string {
   return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-async function countRuns(api: Api, owner: string, repo: string, created: string): Promise<number> {
+/** The raw `total_count` for one `created=` filter, capped at RUNS_COUNT_CAP. */
+async function totalCount(api: Api, owner: string, repo: string, created: string): Promise<number> {
   const { data } = await api.request<{ total_count?: unknown }>(`/repos/${owner}/${repo}/actions/runs`, {
     params: { created, per_page: 1 },
   });
   return typeof data?.total_count === 'number' ? data.total_count : 0;
+}
+
+/**
+ * Runs created inside `window`, counted exactly: a total at RUNS_COUNT_CAP is
+ * halved with splitWindow and both halves counted. Only a one-second window
+ * still at the cap cannot be split, and that one is returned as a lower bound.
+ */
+export async function countRunsExact(
+  api: Api,
+  owner: string,
+  repo: string,
+  window: Window,
+  warn: (msg: string) => void = () => {},
+): Promise<number> {
+  const total = await totalCount(api, owner, repo, formatWindow(window));
+  if (total < RUNS_COUNT_CAP) return total;
+  const halves = splitWindow(window);
+  if (!halves) {
+    warn(`${formatWindow(window)} has at least ${RUNS_COUNT_CAP} runs in one second; counting ${total}, a lower bound`);
+    return total;
+  }
+  let sum = 0;
+  for (const half of halves) sum += await countRunsExact(api, owner, repo, half, warn);
+  return sum;
 }
 
 function outOfBudget(api: Api): Error {
@@ -193,18 +239,57 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
     }
   }
 
-  const atRiskRuns = await countRuns(api, owner, repo, `<${cutoffIso}`);
+  const candidates = [...archiveMonths];
+  if (window.repoCreatedAt) candidates.push(monthOf(window.repoCreatedAt));
+  const first = candidates.length ? candidates.reduce((a, b) => (a < b ? a : b)) : cutoffMonth;
+  const months: Month[] = [];
+  for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
+  const countWindow = (month: Month): Window => {
+    const { start, end } = monthWindow(month);
+    return {
+      start: `${start}T00:00:00Z`,
+      end: month === cutoffMonth ? toInstant(Date.parse(cutoffIso) - 1000) : `${end}T23:59:59Z`,
+    };
+  };
+
+  // Runs from before `first`: the open-ended count, made exact over a bounded
+  // window only when it reads at the cap.
+  const countPreScope = async (): Promise<number> => {
+    if (first <= '0000-01') return 0;
+    const before = `${first}-01T00:00:00Z`;
+    const total = await totalCount(api, owner, repo, `<${before}`);
+    if (total < RUNS_COUNT_CAP) return total;
+    return countRunsExact(api, owner, repo, { start: ACTIONS_EPOCH, end: toInstant(Date.parse(before) - 1000) }, warn);
+  };
+
+  const remoteByMonth = new Map<Month, number>();
+  const countMonth = async (month: Month): Promise<number> => {
+    let remote = remoteByMonth.get(month);
+    if (remote === undefined) {
+      remote = await countRunsExact(api, owner, repo, countWindow(month), warn);
+      remoteByMonth.set(month, remote);
+    }
+    return remote;
+  };
+
+  // Below the cap the open-ended count is exact and the only request. At the
+  // cap it is summed per month instead, and the mismatch pass reuses those.
+  let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
+  let preScope: number | null = null;
+  if (atRiskRuns >= RUNS_COUNT_CAP) {
+    preScope = await countPreScope();
+    atRiskRuns = preScope;
+    for (const month of months) {
+      if (month < monthOf(ACTIONS_EPOCH)) remoteByMonth.set(month, 0);
+      atRiskRuns += await countMonth(month);
+    }
+  }
 
   // When the totals disagree, one count per month localizes the gap and only
   // the mismatched months pay for a full listing.
   let unarchivedRuns = 0;
   if (atRiskRuns !== archived.runs) {
-    const repoCreated = window.repoCreatedAt;
-    const candidates = [...archiveMonths];
-    if (repoCreated) candidates.push(monthOf(repoCreated));
-    const first = candidates.length ? candidates.reduce((a, b) => (a < b ? a : b)) : cutoffMonth;
-
-    const preScope = first > '0000-01' ? await countRuns(api, owner, repo, `<${first}-01T00:00:00Z`) : 0;
+    preScope ??= await countPreScope();
     if (preScope > 0) {
       // Runs from before the repository's own creation date (a transferred
       // repo). Nothing this old is archived, and without listing them their
@@ -213,12 +298,12 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
       unarchivedRuns += preScope;
     }
 
-    for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) {
-      const month = indexToMonth(i);
+    let counted = preScope;
+    for (const month of months) {
       const ids = archivedRunIds.get(month) ?? new Set<number>();
       const window = monthWindow(month);
-      const end = month === cutoffMonth ? toInstant(Date.parse(cutoffIso) - 1000) : `${window.end}T23:59:59Z`;
-      const remote = await countRuns(api, owner, repo, `${window.start}T00:00:00Z..${end}`);
+      const remote = await countMonth(month);
+      counted += remote;
       if (remote === ids.size) continue;
 
       const listed: RunRecord[] = [];
@@ -238,6 +323,10 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
         }
       }
     }
+    // GitHub's counts can briefly disagree with each other: live, an open-ended
+    // count of 17 against monthly counts summing to 20. Report the sum the
+    // unarchived runs were reconciled against, so the two cannot contradict.
+    atRiskRuns = counted;
   }
 
   // Checks and statuses for commits the archive has not fetched yet.
