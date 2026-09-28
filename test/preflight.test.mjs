@@ -96,7 +96,15 @@ function run(id, created_at, head_sha = `sha${id}`) {
   return { id, name: 'ci', status: 'completed', conclusion: 'success', created_at, head_sha, run_attempt: 1 };
 }
 
-async function preflight({ files = {}, retentionDays = null, now = NOW, warn = quiet, maxRequests = 500, ...gh } = {}) {
+async function preflight({
+  files = {},
+  retentionDays = null,
+  now = NOW,
+  log = quiet,
+  warn = quiet,
+  maxRequests = 500,
+  ...gh
+} = {}) {
   const { fetchImpl, calls } = github(gh);
   const api = new Api({ token: 't', maxRequests, fetchImpl, sleep: async () => {} });
   const archive = await Archive.open(memBackend(files), 'acme/widget');
@@ -107,7 +115,7 @@ async function preflight({ files = {}, retentionDays = null, now = NOW, warn = q
     repo: 'widget',
     retentionDays,
     now,
-    log: quiet,
+    log,
     warn,
   });
   return { result, calls, api };
@@ -299,12 +307,15 @@ test('below the count cap one request still counts every at-risk run', async () 
 
 test('a capped count is summed per month, and those counts are not asked for twice', async () => {
   const remote = busyQuarter();
+  const logs = [];
   const { result, calls } = await preflight({
     runs: remote,
     files: archiveOf(remote.slice(0, -2)),
     repoCreated: '2026-01-01T00:00:00Z',
     countCap: CAP,
+    log: (msg) => logs.push(msg),
   });
+  assert.ok(logs.includes('GitHub stops counting at 2,500; counting runs month by month'), logs.join('\n'));
   assert.equal(result.atRisk.runs, 6000);
   assert.equal(result.archived.runs, 5998);
   assert.deepEqual(result.unarchived, { runs: 2, checks: 0, statuses: 0, total: 2 });
@@ -381,6 +392,14 @@ test('a capped count does not ask about months from before Actions existed', asy
   assert.equal(result.unarchived.total, 0);
   // The same 6 as a repository created in 2026-01, plus 2018-01..2025-12.
   assert.equal(countCalls(calls).length, 6 + 8 * 12);
+});
+
+test('a repository created after the cutoff month does not count its newer runs', async () => {
+  // A transferred repository: its runs predate its own creation date.
+  const remote = [...burst(1, '2026-05-10T00:00:00Z', 5, 3_600_000), ...burst(100, '2026-07-10T00:00:00Z', 10, 3_600_000)];
+  const { result } = await preflight({ runs: remote, repoCreated: '2026-08-10T00:00:00Z' });
+  assert.equal(result.atRisk.runs, 5);
+  assert.equal(result.unarchived.runs, 5);
 });
 
 test('a capped month still dedupes a re-attempted run when it is listed', async () => {

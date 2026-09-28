@@ -241,7 +241,9 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
 
   const candidates = [...archiveMonths];
   if (window.repoCreatedAt) candidates.push(monthOf(window.repoCreatedAt));
-  const first = candidates.length ? candidates.reduce((a, b) => (a < b ? a : b)) : cutoffMonth;
+  // Capped at the cutoff month, or a repository created after it would count its
+  // own newer runs as predating it.
+  const first = candidates.reduce((a, b) => (a < b ? a : b), cutoffMonth);
   const months: Month[] = [];
   for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
   const countWindow = (month: Month): Window => {
@@ -277,6 +279,7 @@ async function preflight(opts: PreflightOptions): Promise<PreflightResult> {
   let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
   let preScope: number | null = null;
   if (atRiskRuns >= RUNS_COUNT_CAP) {
+    log(`GitHub stops counting at ${RUNS_COUNT_CAP.toLocaleString('en-US')}; counting runs month by month`);
     preScope = await countPreScope();
     atRiskRuns = preScope;
     for (const month of months) {

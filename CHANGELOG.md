@@ -1,23 +1,23 @@
 # Changelog
 
-## 1.4.1 - 2026-09-28
+## 1.4.1 - 2026-09-29
 
 ### Fixed
 
-- `preflight` under-counted runs at risk on any repository with 2,500 or more of them.
+- `preflight` under-counted runs at risk on any repository with more than 2,500 of them.
   Since 2026-09-25 GitHub caps `total_count` at 2,500 on a filtered runs query
   ([changelog](https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui)),
-  and preflight read that number as the true count. A fully archived busy repository
-  reported 2,500 at risk and 2,500 archived, and `--fail-on-unarchived` could pass while
-  runs were still unprotected: at exactly 2,500 archived of 5,000 at risk, the capped
+  and preflight read that number as the true count. `--fail-on-unarchived` could pass
+  while runs were still unprotected: at exactly 2,500 archived of 5,000 at risk, the capped
   counts matched and it exited 0. Checked against `qtu11/SipMart`, which has 3,838 runs:
   1.4.0 printed `at risk: 2,500 runs` next to `Unarchived and at risk: 3,838 runs`, and
   after a backfill it said `Nothing at risk. 6,198 records` where the attic held 7,536.
 
-  A count that reads 2,500 is now split: month by month from the first archived month to
-  the cutoff, and any window still at the cap is halved, down to the second if a day
-  needs it. Below the cap nothing changes, one request counts everything. SipMart takes
-  9 count requests. More than 2,500 runs inside a single second count as 2,500, with a
+  A count that reads 2,500 is now split: month by month from the repository's creation
+  (or its oldest archived month, if older) to the cutoff, and any month still at the cap
+  is halved, down to the second if a day needs it. Months before 2018 are skipped, since
+  no Actions run is that old. Below the cap it makes the same requests as 1.4.0. SipMart
+  takes 9 count requests. More than 2,500 runs inside a single second count as 2,500, with a
   warning that the number is a lower bound. `countRunsExact` and `RUNS_COUNT_CAP` are
   exported for anyone counting runs themselves.
 
@@ -25,6 +25,13 @@
   after new runs landed, because GitHub's open-ended and per-month counts briefly
   disagree. Seen live on `Booyaka101/rimpatch`: 17 at risk, 20 unarchived. When preflight
   reconciles per month it now reports the per-month sum it reconciled against.
+
+- A repository created after the cutoff month, with older runs transferred in, had its
+  runs from after the cutoff counted as at risk too. Five runs before the cutoff and ten
+  after it read as 15 unarchived in 1.4.0.
+
+- `backfill` warned that a window had "at least 1000 runs in a single day" when it had
+  that many in a single second. The split has gone down to the second since 1.3.0.
 
 ## 1.4.0 - 2026-09-13
 

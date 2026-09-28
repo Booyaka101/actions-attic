@@ -122,7 +122,7 @@ Unit and Integration Tests: 272 runs, 266 success, 6 failure, flake rate 2.2% (p
 
 85 requests, 7,148 runs, no duplicates. The archived counts match what the API reported for the same
 windows exactly: 3,133 for July and 4,015 for August. That was before GitHub capped `total_count` at
-2,500, so a single query for August now reads 2,500. The `flake` line is checked against the live
+2,500, so a single query for either month now reads 2,500. The `flake` line is checked against the live
 API for the same window too, where `status=success` reports 266 and `status=failure` reports 6.
 
 `flake` counts only runs that concluded `success` or `failure`; cancelled, skipped and still-running
@@ -211,7 +211,8 @@ Nothing at risk. 126 records already in the attic.
 
 The first command exited 1, the last exited 0. By default preflight compares against the
 `refs/attic/archive` ref the Action writes; `--archive` compares against a local directory
-instead. Counting runs costs one request while fewer than 2,500 are at risk. Since
+instead. Counting runs costs one request while fewer than 2,500 are at risk and the archive
+agrees, and one more per month when it does not. Since
 [2026-09-25](https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui)
 GitHub caps `total_count` at 2,500 on a filtered query, so past that preflight counts month by
 month and halves any window that still reads 2,500, two more requests each time, until every

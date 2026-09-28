@@ -20247,7 +20247,7 @@ async function walkWindow(ctx, window, store, windows, progress) {
   const halves = splitWindow(window);
   if (!halves) {
     ctx.warn(
-      `${key} has at least ${SEARCH_CAP} runs in a single day; GitHub will not return more than ${SEARCH_CAP} for one search, so that day is capped`
+      `${key} has at least ${SEARCH_CAP} runs in one second; GitHub will not return more than ${SEARCH_CAP} for one search, so that second is capped`
     );
     await drain(ctx, key, store, progress, SEARCH_CAP / 100);
     clearPagesDone(progress, key);
@@ -20519,7 +20519,7 @@ async function preflight(opts) {
   }
   const candidates = [...archiveMonths];
   if (window.repoCreatedAt) candidates.push(monthOf(window.repoCreatedAt));
-  const first = candidates.length ? candidates.reduce((a, b) => a < b ? a : b) : cutoffMonth;
+  const first = candidates.reduce((a, b) => a < b ? a : b, cutoffMonth);
   const months = [];
   for (let i = monthToIndex(first); i <= monthToIndex(cutoffMonth); i++) months.push(indexToMonth(i));
   const countWindow = (month) => {
@@ -20548,6 +20548,7 @@ async function preflight(opts) {
   let atRiskRuns = await totalCount(api, owner, repo, `<${cutoffIso}`);
   let preScope = null;
   if (atRiskRuns >= RUNS_COUNT_CAP) {
+    log(`GitHub stops counting at ${RUNS_COUNT_CAP.toLocaleString("en-US")}; counting runs month by month`);
     preScope = await countPreScope();
     atRiskRuns = preScope;
     for (const month of months) {
