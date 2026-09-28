@@ -98,6 +98,25 @@ test('a single day over the cap is split on the second, not truncated', async ()
   }
 });
 
+test('a second over the cap takes the 1,000 GitHub will serve and says which second', async () => {
+  const dir = await scratch();
+  try {
+    const runs = makeRuns({ month: '2026-03', count: 1001, days: 1 }).map((r) => ({ ...r, created_at: '2026-03-01T10:00:00Z' }));
+    const { fetchImpl } = makeFakeGitHub({ runs });
+    const { ctx } = await contextFor(dir, fetchImpl);
+    const warnings = [];
+    ctx.warn = (m) => warnings.push(m);
+    const result = await captureWindow(ctx, monthWindow('2026-03'));
+    assert.equal(new Set(result.runs.map((r) => r.id)).size, 1000);
+    assert.deepEqual(warnings, [
+      '2026-03-01T10:00:00Z..2026-03-01T10:00:00Z has at least 1000 runs in one second; ' +
+        'GitHub will not return more than 1000 for one search, so that second is capped',
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('resume from the frontier after budget exhaustion loses no run', async () => {
   const dir = await scratch();
   try {

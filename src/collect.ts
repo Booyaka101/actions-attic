@@ -8,7 +8,11 @@ import { Api, BudgetExhausted, HttpError } from './api.js';
 import type { Archive, CheckRecord, RunRecord, StatusRecord } from './archive.js';
 import { type Month, type Window, formatWindow, monthWindow, splitWindow } from './months.js';
 
-/** GitHub returns at most 1,000 results per search on these filters. */
+/**
+ * GitHub returns at most 1,000 results per search on these filters. `total_count`
+ * is itself capped at 2,500 (RUNS_COUNT_CAP), which is still above this, so a
+ * window over the search cap still reads as one.
+ */
 export const SEARCH_CAP = 1000;
 
 export interface Context {
@@ -153,10 +157,10 @@ async function walkWindow(
   const halves = splitWindow(window);
   if (!halves) {
     ctx.warn(
-      `${key} has at least ${SEARCH_CAP} runs in a single day; ` +
-        `GitHub will not return more than ${SEARCH_CAP} for one search, so that day is capped`,
+      `${key} has at least ${SEARCH_CAP} runs in one second; ` +
+        `GitHub will not return more than ${SEARCH_CAP} for one search, so that second is capped`,
     );
-    // Take everything GitHub will still hand over for that day.
+    // Take everything GitHub will still hand over for that second.
     await drain(ctx, key, store, progress, SEARCH_CAP / 100);
     clearPagesDone(progress, key);
     windows.push(key);

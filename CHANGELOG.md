@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.4.1 - 2026-09-29
+
+### Fixed
+
+- `preflight` under-counted runs at risk on any repository with more than 2,500 of them.
+  Since 2026-09-25 GitHub caps `total_count` at 2,500 on a filtered runs query
+  ([changelog](https://github.blog/changelog/2026-09-25-changes-to-query-results-in-the-github-actions-api-and-ui)),
+  and preflight read that number as the true count. `--fail-on-unarchived` could pass
+  while runs were still unprotected: at exactly 2,500 archived of 5,000 at risk, the capped
+  counts matched and it exited 0. Checked against `qtu11/SipMart`, which has 3,838 runs:
+  1.4.0 printed `at risk: 2,500 runs` next to `Unarchived and at risk: 3,838 runs`, and
+  after a backfill it said `Nothing at risk. 6,198 records` where the attic held 7,536.
+
+  A count that reads 2,500 is now split: month by month from the repository's creation
+  (or its oldest archived month, if older) to the cutoff, and any month still at the cap
+  is halved, down to the second if a day needs it. Months before 2018 are skipped, since
+  no Actions run is that old, and so is a stretch of empty months before a repository's
+  first run, a few requests at a time: `cli/cli`, created in 2019, takes 27 count requests
+  for its 22,715 runs at risk, and SipMart takes 10. More than 2,500 runs inside a single
+  second count as 2,500, with a warning that the number is a lower bound. `countRunsExact`
+  and `RUNS_COUNT_CAP` are exported for anyone counting runs themselves.
+
+  Past the cap the archive is always compared month by month, so runs the attic kept
+  after GitHub deleted them cannot offset unarchived runs in another month, and a month
+  GitHub reports empty is not listed just because the attic holds runs from it. Below the
+  cap preflight makes the same requests as 1.4.0.
+
+- The at-risk and unarchived run counts could contradict each other for a few seconds
+  after new runs landed, because GitHub's open-ended and per-month counts briefly
+  disagree. Seen live on `Booyaka101/rimpatch`: 17 at risk, 20 unarchived. When preflight
+  reconciles per month it now reports the per-month sum it reconciled against.
+
+- A repository created after the cutoff month, with older runs transferred in, had its
+  runs from after the cutoff counted as at risk too. Five runs before the cutoff and ten
+  after it read as 15 unarchived in 1.4.0.
+
+- `backfill` warned that a window had "at least 1000 runs in a single day" when it had
+  that many in a single second. The split has gone down to the second since 1.3.0.
+
 ## 1.4.0 - 2026-09-13
 
 ### Added

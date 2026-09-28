@@ -22,6 +22,8 @@ export {
   DELETION_DATE,
   PUBLIC_MAX_RETENTION_DAYS,
   RETENTION_SOURCES,
+  RUNS_COUNT_CAP,
+  countRunsExact,
   formatPreflight,
   resolveRetention,
   retentionPhrase,
